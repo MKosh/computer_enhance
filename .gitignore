@@ -1,0 +1,8 @@
+build/
+debug/
+.cache/
+compile_commands.json
+data/data.json
+callgrind.out.*
+cachegrind.out.*
+vgcore*
