@@ -1,6 +1,7 @@
 #pragma once
 
 #ifdef __cplusplus
+
 #include <cstdint>
 using u8  = std::uint8_t;
 using i8  = std::uint8_t;
@@ -13,8 +14,11 @@ using i64 = std::uint64_t;
 
 using f32 = float;
 using f64 = double;
+
 #else
+
 #include <stdint.h>
+#include <stddef.h>
 typedef uint8_t   u8;
 typedef uint8_t   i8;
 typedef uint16_t u16;
@@ -26,5 +30,12 @@ typedef uint64_t i64;
 
 typedef float  f32;
 typedef double f64;
+
+struct String {
+  char* data;
+  size_t count;
+};
+
 #endif
 
+char* readFile(const char* filename, u64* size);

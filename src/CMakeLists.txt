@@ -1,6 +1,6 @@
 add_executable(decode decode.cpp)
 
-add_executable(parse parse.c)
+add_executable(parse parse.c utils.c json.c)
 
 target_compile_definitions(parse PUBLIC
   "$<$<CONFIG:DEBUG>:DEBUG>"
