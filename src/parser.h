@@ -1,0 +1,40 @@
+#pragma once
+
+#include <stddef.h>
+#include <stdlib.h>
+#include <stdbool.h>
+
+#include "utils.h"
+#include "json.h"
+
+////////////////////////////////////////////////////////////////////////////////
+///
+typedef struct {
+  String source;
+  u64 at;
+  bool had_error;
+} JsonParser;
+
+////////////////////////////////////////////////////////////////////////////////
+///
+void consumeWhitespace(JsonParser* parser);
+
+////////////////////////////////////////////////////////////////////////////////
+///
+char peek(JsonParser* parser);
+
+////////////////////////////////////////////////////////////////////////////////
+///
+char peekNext(JsonParser* parser);
+
+////////////////////////////////////////////////////////////////////////////////
+///
+char advance(JsonParser* parser);
+
+void initParser(JsonParser* parser, String source);
+void clearParser(JsonParser* parser);
+void freeParser(JsonParser* parser);
+
+bool parserParse(JsonParser* parser, JsonDocument* doc);
+
+// JsonElement getElement(String name);

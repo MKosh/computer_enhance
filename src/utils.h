@@ -31,10 +31,15 @@ typedef uint64_t i64;
 typedef float  f32;
 typedef double f64;
 
-struct String {
+typedef struct {
   char* data;
   size_t count;
-};
+} String;
+
+// typedef struct String String;
+String readFileStr(const char* filename);
+
+void freeString(String* string);
 
 #endif
 

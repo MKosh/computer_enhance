@@ -6,7 +6,7 @@
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
-typedef struct String String;
+// typedef struct String String;
 typedef struct JsonElement JsonElement;
 typedef struct JsonMember JsonMember;
 typedef struct JsonArray JsonArray;
@@ -25,9 +25,10 @@ typedef enum {
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
-struct JsonMemeber {
+struct JsonMember {
   String name;
   JsonElement* element;
+  JsonMember* next;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -66,3 +67,4 @@ struct JsonElement {
 typedef struct {
   JsonElement* root;
 } JsonDocument;
+
