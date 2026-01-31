@@ -38,6 +38,7 @@ typedef struct {
 
 // typedef struct String String;
 String readFileStr(const char* filename);
+void printString(String string);
 
 void freeString(String* string);
 

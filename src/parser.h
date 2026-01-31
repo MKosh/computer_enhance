@@ -30,6 +30,7 @@ char peekNext(JsonParser* parser);
 ////////////////////////////////////////////////////////////////////////////////
 ///
 char advance(JsonParser* parser);
+bool isDigit(char c);
 
 void initParser(JsonParser* parser, String source);
 void clearParser(JsonParser* parser);
@@ -43,6 +44,14 @@ JsonArray* parseJsonArray(JsonParser* parser);
 String parseJsonString(JsonParser* parser);
 f64 parseJsonNumber(JsonParser* parser);
 bool parseJsonBool(JsonParser* parser);
+
+
+void printJsonDoc(JsonDocument* doc);
+void printJsonElement(JsonElement* element);
+void printJsonElements(JsonElement* element);
+void printJsonValue(JsonValue* value);
+void printJsonObject(JsonObject* obj);
+void printJsonArray(JsonArray* array);
 
 
 // JsonElement getElement(String name);

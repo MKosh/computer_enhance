@@ -16,4 +16,5 @@ target_link_options(parse PRIVATE
   -fsanitize=address,leak
   -static-libasan
   -fno-omit-frame-pointer
+  -lm
 )

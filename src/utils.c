@@ -84,3 +84,10 @@ void freeString(String* string)
   string->data = NULL;
   string->count = 0;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+///
+void printString(String string)
+{
+  printf("%s", string.data);
+}
