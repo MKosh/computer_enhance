@@ -35,6 +35,14 @@ void initParser(JsonParser* parser, String source);
 void clearParser(JsonParser* parser);
 void freeParser(JsonParser* parser);
 
-bool parserParse(JsonParser* parser, JsonDocument* doc);
+bool parseJsonDoc(JsonParser* parser, JsonDocument* doc);
+JsonElement* parse(JsonParser* parser);
+JsonElement* parseJsonElement(JsonParser* parser);
+JsonObject* parseJsonObject(JsonParser* parser);
+JsonArray* parseJsonArray(JsonParser* parser);
+String parseJsonString(JsonParser* parser);
+f64 parseJsonNumber(JsonParser* parser);
+bool parseJsonBool(JsonParser* parser);
+
 
 // JsonElement getElement(String name);

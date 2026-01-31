@@ -32,8 +32,8 @@ typedef float  f32;
 typedef double f64;
 
 typedef struct {
-  char* data;
-  size_t count;
+  char* data;   ///< Pointer to the start of the string.
+  size_t count; ///< Length of the string including the null terminator.
 } String;
 
 // typedef struct String String;
