@@ -12,6 +12,101 @@ static int DEBUG_ = 0;
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
+void freeJsonDoc(JsonDocument* doc)
+{
+  if (DEBUG_) printf("Starting %s\n", __FUNCTION__);
+  if (doc == NULL) {
+    fprintf(stderr, "Error, trying to free a NULL document.\n");
+    return;
+  }
+
+  freeJsonElements(doc->root);
+  
+  // free(doc);
+  // doc = NULL;
+  if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
+void freeJsonElement(JsonElement* element)
+{
+
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
+void freeJsonElements(JsonElement* elements)
+{
+  if (DEBUG_) printf("Starting %s\n", __FUNCTION__);
+  if (elements == NULL) {
+    fprintf(stderr, "Error, freeing NULL element.\n");
+    return;
+  }
+
+  JsonElement* last = elements;
+  for (JsonElement* e = elements; e != NULL;) {
+    freeJsonValue(e->value);
+    last = e;
+    e = e->next;
+    free(last);
+  }
+
+  elements = NULL;
+
+  if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
+void freeJsonValue(JsonValue* value)
+{
+  if (DEBUG_) printf("Starting %s\n", __FUNCTION__);
+  if (value == NULL) {
+    fprintf(stderr, "Error, freeing NULL value.\n");
+    return;
+  }
+
+  switch (value->type) {
+    case JSON_BOOL:
+    case JSON_NUMBER:
+      break;
+    case JSON_STRING: {
+      freeString(&(value->as.string));
+      break;
+    }
+    case JSON_ARRAY: {
+      freeJsonArray(value->as.array);
+      break;
+    }
+    case JSON_OBJECT: {
+      freeJsonObject(value->as.obj);
+      break;
+    }
+  }
+
+  free(value);
+  value = NULL;
+
+  if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
+void freeJsonArray(JsonArray* array)
+{
+
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
+void freeJsonObject(JsonObject* object)
+{
+
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
 void printJsonArray(JsonArray* array)
 {
   if (DEBUG_) printf("Starting %s\n", __FUNCTION__);
@@ -312,7 +407,28 @@ JsonArray* parseJsonArray(JsonParser* parser)
 ///
 String parseJsonString(JsonParser* parser)
 {
-  String string;
+  String string = { .data = NULL, .count = 0};
+  advance(parser); // Advance off of the starting quotation mark.
+
+  // Keep track of where the string starts to fill the data buffer later.
+  u64 start = parser->at;
+  while(peek(parser) != '"') {
+    string.count++;
+    advance(parser);
+  }
+  string.count++; // Don't forget space for the null terminator.
+
+  string.data = malloc(sizeof(char)*string.count);
+
+  parser->at = start;
+
+  for (u64 i = 0; i < string.count - 1; ++i) {
+    string.data[i] = advance(parser);
+  }
+  string.data[string.count - 1] = '\0';
+
+  consumeWhitespace(parser);
+  advance(parser);
 
   return string;
 }
@@ -585,9 +701,11 @@ int main(int argc, char* argv[]) {
   } else {
     printf("JsonDoc contents:\n");
     printJsonDoc(&doc);
+    printf("\n");
   }
 
   freeParser(&parser);
+  freeJsonDoc(&doc);
   if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
   return 0;
 }

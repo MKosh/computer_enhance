@@ -45,13 +45,19 @@ String parseJsonString(JsonParser* parser);
 f64 parseJsonNumber(JsonParser* parser);
 bool parseJsonBool(JsonParser* parser);
 
-
 void printJsonDoc(JsonDocument* doc);
 void printJsonElement(JsonElement* element);
 void printJsonElements(JsonElement* element);
 void printJsonValue(JsonValue* value);
 void printJsonObject(JsonObject* obj);
 void printJsonArray(JsonArray* array);
+
+void freeJsonDoc(JsonDocument* doc);
+void freeJsonElement(JsonElement* element);
+void freeJsonElements(JsonElement* elements);
+void freeJsonValue(JsonValue* value);
+void freeJsonArray(JsonArray* array);
+void freeJsonObject(JsonObject* object);
 
 
 // JsonElement getElement(String name);
