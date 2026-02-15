@@ -58,6 +58,12 @@ void freeJsonElements(JsonElement* elements);
 void freeJsonValue(JsonValue* value);
 void freeJsonArray(JsonArray* array);
 void freeJsonObject(JsonObject* object);
+void freeJsonMember(JsonMember* member);
+
+JsonMember* getMember(JsonElement* root, const char* name);
+JsonMember* getJsonMember(JsonObject* obj);
+JsonObject* getJsonObject(JsonValue* value);
+JsonValue* getJsonValue(JsonElement* element);
 
 
 // JsonElement getElement(String name);

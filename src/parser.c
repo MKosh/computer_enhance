@@ -12,6 +12,51 @@ static int DEBUG_ = 0;
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
+JsonObject* getJsonObject(JsonValue* value)
+{
+  if (value->type != JSON_OBJECT) {
+    return NULL;
+  }
+  return value->as.obj;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
+// JsonMember* getJsonMember(JsonObject* obj);
+
+////////////////////////////////////////////////////////////////////////////////
+///
+JsonMember* getMember(JsonElement* root, const char* name)
+{
+  if (DEBUG_) printf("Starting %s\n", __FUNCTION__);
+  if (root == NULL) {
+    return NULL;
+  }
+
+  JsonMember* ret = NULL;
+  JsonMember* member;
+  JsonObject* obj;
+  for (JsonElement* e; e != NULL; e = e->next) {
+    obj = getJsonObject(e->value);
+    if (obj == NULL) return NULL;
+    member = obj->members;
+    while (member != NULL) {
+      if (strcmp(name, member->name.data) == 0) {
+        ret = member;
+        goto found;
+      } else {
+        member = member->next;
+      }
+    }
+  }
+
+found:
+  if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
+  return ret;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
 void freeJsonDoc(JsonDocument* doc)
 {
   if (DEBUG_) printf("Starting %s\n", __FUNCTION__);
@@ -44,15 +89,17 @@ void freeJsonElements(JsonElement* elements)
     return;
   }
 
-  JsonElement* last = elements;
+  JsonElement* temp;
   for (JsonElement* e = elements; e != NULL;) {
+    temp = e->next;
     freeJsonValue(e->value);
-    last = e;
-    e = e->next;
-    free(last);
+    free(e);
+    e = temp;
+    // e = e->next;
+    // free(last);
   }
 
-  elements = NULL;
+  // elements = NULL;
 
   if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
 }
@@ -70,8 +117,10 @@ void freeJsonValue(JsonValue* value)
   switch (value->type) {
     case JSON_BOOL:
     case JSON_NUMBER:
+      if (DEBUG_) printf("Freeing number: %g\n", value->as.number);
       break;
     case JSON_STRING: {
+      if (DEBUG_) printf("Freeing string: %s\n", value->as.string.data);
       freeString(&(value->as.string));
       break;
     }
@@ -95,14 +144,51 @@ void freeJsonValue(JsonValue* value)
 ///
 void freeJsonArray(JsonArray* array)
 {
+  if (DEBUG_) printf("Starting %s\n", __FUNCTION__);
+  if (array == NULL) {
+    return;
+  }
+  freeJsonElements(array->elements);
+  free(array);
+  array = NULL;
+  if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
+}
 
+////////////////////////////////////////////////////////////////////////////////
+///
+void freeJsonMember(JsonMember* member)
+{
+  if (DEBUG_) printf("Starting %s\n", __FUNCTION__);
+  if (member == NULL) {
+    return;
+  }
+
+  if (DEBUG_) printf("Freeing member: %s\n", member->name.data);
+  freeString(&member->name);
+  freeJsonElements(member->element);
+  member->next = NULL;
+  if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
 void freeJsonObject(JsonObject* object)
 {
+  if (DEBUG_) printf("Starting %s\n", __FUNCTION__);
+  if (object == NULL) {
+    return;
+  }
 
+  JsonMember* temp;
+  for (JsonMember* mem = object->members; mem != NULL;) {
+    temp = mem->next;
+    freeJsonMember(mem);
+    free(mem);
+    mem = temp;
+  }
+  free(object);
+  object = NULL;
+  if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -212,7 +298,7 @@ void printJsonElements(JsonElement* element)
   for (JsonElement* e = element; e != NULL; e = e->next) {
     // if (DEBUG_) printf("Printing element!\n");
     printJsonValue(e->value);
-    if (e->next != NULL) printf(","); 
+    if (e->next != NULL) printf(",\n"); 
   }
   if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
 }
@@ -357,7 +443,8 @@ JsonArray* parseJsonArray(JsonParser* parser)
   JsonArray* array = (JsonArray*)malloc(sizeof(JsonArray));
   array->elements = NULL;
 
-  JsonElement* temp = (JsonElement*)malloc(sizeof(JsonElement));
+  // JsonElement* temp = (JsonElement*)malloc(sizeof(JsonElement));
+  JsonElement* temp;
 
   if (array == NULL || temp == NULL) {
     fprintf(stderr, "Error allocating memory for array element.\n");
@@ -399,6 +486,8 @@ JsonArray* parseJsonArray(JsonParser* parser)
 
    }
 
+  // free(temp);
+  // temp = NULL;
   if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
   return array;
 }
@@ -702,6 +791,21 @@ int main(int argc, char* argv[]) {
     printf("JsonDoc contents:\n");
     printJsonDoc(&doc);
     printf("\n");
+  }
+
+  JsonMember* pairs = getMember(doc.root, "Pairs");
+  if (pairs != NULL) {
+    printf("\nFound: %s\n", pairs->name.data);
+    printJsonElements(pairs->element);
+    printf("\n");
+
+    JsonMember* x0 = getMember(pairs->element, "x0");
+    if (x0 != NULL) {
+      printf("\nFound: %s\n", x0->name.data);
+      printJsonElements(x0->element);
+      printf("\n");
+
+    }
   }
 
   freeParser(&parser);
