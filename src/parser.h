@@ -63,7 +63,7 @@ void freeJsonMember(JsonMember* member);
 JsonMember* getMember(JsonElement* root, const char* name);
 JsonMember* getJsonMember(JsonObject* obj);
 JsonObject* getJsonObject(JsonValue* value);
-JsonValue* getJsonValue(JsonElement* element);
+void* getJsonValue(JsonElement* element);
 
 
 // JsonElement getElement(String name);

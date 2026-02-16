@@ -36,7 +36,7 @@ JsonMember* getMember(JsonElement* root, const char* name)
   JsonMember* ret = NULL;
   JsonMember* member;
   JsonObject* obj;
-  for (JsonElement* e; e != NULL; e = e->next) {
+  for (JsonElement* e = root; e != NULL; e = e->next) {
     obj = getJsonObject(e->value);
     if (obj == NULL) return NULL;
     member = obj->members;
@@ -55,6 +55,72 @@ found:
   return ret;
 }
 
+f64 getJsonNumber(JsonElement* element, const char* name)
+{
+  if (element == NULL) {
+    fprintf(stderr, "NULL json element to json number function.\n");
+    return NAN;
+  }
+
+  if (element->value->type != JSON_OBJECT) {
+    fprintf(stderr, "Invalid value type\n");
+    return NAN;
+  }
+
+  JsonObject* obj = element->value->as.obj;
+  for (JsonMember* member = obj->members; member != NULL; member = member->next) {
+    if (strcmp(name, member->name.data) == 0) {
+      if (member->element->value->type == JSON_NUMBER) {
+        return member->element->value->as.number;
+      } else {
+        fprintf(stderr, "Found member named '%s', but it was not a number as expected.\n", member->name.data);
+        return NAN;
+      }
+    }
+  }
+
+  fprintf(stderr, "No member named '%s' found.\n", name);
+  return NAN;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
+void* getJsonValue(JsonElement* element)
+{
+  if (element == NULL) {
+    return NULL;
+  }
+  void* ret;
+
+  switch (element->value->type) {
+    case JSON_BOOL: {
+      ret = &element->value->as.Bool;
+      break;
+    }
+    case JSON_NUMBER: {
+      ret = &element->value->as.number;
+      break;
+    }
+    case JSON_STRING: {
+      ret = &element->value->as.string;
+      break;
+    }
+    case JSON_ARRAY: {
+      ret = element->value->as.array;
+      break;
+    }
+    case JSON_OBJECT: {
+      ret = element->value->as.obj;
+      break;
+    }
+  }
+
+  if (ret == NULL) {
+    fprintf(stderr, "Error, returning NULL json value.\n");
+  }
+  return ret;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 ///
 void freeJsonDoc(JsonDocument* doc)
@@ -70,13 +136,6 @@ void freeJsonDoc(JsonDocument* doc)
   // free(doc);
   // doc = NULL;
   if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///
-void freeJsonElement(JsonElement* element)
-{
-
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -220,7 +279,7 @@ void printJsonObject(JsonObject* obj)
     return;
   }
 
-  bool first = true;
+  // bool first = true;
 
   printf("{");
   for (JsonMember* member = obj->members; member != NULL; member = member->next) {
@@ -446,7 +505,7 @@ JsonArray* parseJsonArray(JsonParser* parser)
   // JsonElement* temp = (JsonElement*)malloc(sizeof(JsonElement));
   JsonElement* temp;
 
-  if (array == NULL || temp == NULL) {
+  if (array == NULL) {
     fprintf(stderr, "Error allocating memory for array element.\n");
     parser->had_error = true;
     return NULL;
@@ -455,7 +514,7 @@ JsonArray* parseJsonArray(JsonParser* parser)
   for (;;) {
     advance(parser);
     consumeWhitespace(parser);
-    printf("Current char: parser[%ld] = %c\n", parser->at, peek(parser));
+    if (DEBUG_) printf("Current char: parser[%ld] = %c\n", parser->at, peek(parser));
     if (peek(parser) == ']') {
       break;
       // return array;
@@ -530,7 +589,7 @@ f64 parseJsonNumber(JsonParser* parser)
   char buffer[256];
   size_t index = 0;
   
-  while (isDigit(peek(parser)) || peek(parser) == '.') {
+  while (isDigit(peek(parser)) || peek(parser) == '.' || peek(parser) == '-') {
     buffer[index++] = advance(parser);
   }
   buffer[index] = '\0';
@@ -763,10 +822,50 @@ void consumeWhitespace(JsonParser* parser)
   }
 }
 
+// pub fn referenceHaversine(x0: f64, y0: f64, x1: f64, y1: f64, radius: f64) f64 {
+//     const asin = std.math.asin;
+//     const sqrt = std.math.sqrt;
+//     var lat1 = y0;
+//     var lat2 = y1;
+//     const lon1 = x0;
+//     const lon2 = x1;
+//     const d_lat = radiansFromDegrees(lat2 - lat1);
+//     const d_lon = radiansFromDegrees(lon2 - lon1);
+//     lat1 = radiansFromDegrees(lat1);
+//     lat2 = radiansFromDegrees(lat2);
+//     const a = square(@sin(d_lat/2.0))  + @cos(lat1) * @cos(lat2) * square(@sin(d_lon/2));
+//     const c = 2.0 * asin(sqrt(a));
+//     const result = radius * c;
+//     return result;
+// }
+
+f64 radiansFromDegrees(f64 deg)
+{
+  return 0.01745329251994329577 * deg;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
+/// x0 = lon1  y0 = lat1
+/// x1 = lon2  y1 = lat2
+f64 referenceHaversine(f64 x0, f64 y0, f64 x1, f64 y1)
+{
+  f64 radius = 6372.8;
+  f64 lat1 = radiansFromDegrees(y0);
+  f64 lat2 = radiansFromDegrees(y1);
+
+  f64 d_lat = radiansFromDegrees(y1 - y0);
+  f64 d_lon = radiansFromDegrees(x1 - x0);
+  
+  f64 a = pow(sin(d_lat/2.0), 2.0) + cos(lat1) * cos(lat2) * pow(sin(d_lon/2.0), 2.0);
+  f64 c = 2.0 * asin(sqrt(a));
+  return radius * c;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 ///
 int main(int argc, char* argv[]) {
-  int debug_arg = 0;
+  // int debug_arg = 0;
   char* file_arg;
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "-debug") == 0) {
@@ -783,29 +882,45 @@ int main(int argc, char* argv[]) {
   JsonDocument doc;
   initJsonDocument(&doc);
 
-  printf("File contents:\n%s\n", parser.source.data);
+  if (DEBUG_) printf("File contents:\n%s\n", parser.source.data);
 
   if (parseJsonDoc(&parser, &doc)) {
     fprintf(stderr, "Cannot parse file.\n");
   } else {
-    printf("JsonDoc contents:\n");
-    printJsonDoc(&doc);
-    printf("\n");
+    printf("Done parsing doc.\n");
+    if (DEBUG_) printJsonDoc(&doc);
+    if (DEBUG_) printf("JsonDoc contents:\n");
+    if (DEBUG_) printf("\n");
   }
 
-  JsonMember* pairs = getMember(doc.root, "Pairs");
-  if (pairs != NULL) {
-    printf("\nFound: %s\n", pairs->name.data);
-    printJsonElements(pairs->element);
-    printf("\n");
 
-    JsonMember* x0 = getMember(pairs->element, "x0");
-    if (x0 != NULL) {
-      printf("\nFound: %s\n", x0->name.data);
-      printJsonElements(x0->element);
-      printf("\n");
+  JsonMember* pairs_node = getMember(doc.root, "pairs");
+  if (pairs_node != NULL) {
+    if (DEBUG_) printJsonElements(pairs_node->element);
+    if (DEBUG_) printf("\nFound: %s\n", pairs_node->name.data);
+    if (DEBUG_) printf("\n\n");
 
+    JsonArray* values = getJsonValue(pairs_node->element);
+    f64 sum = 0;
+    f64 N = 0;
+    f64 run = 0;
+    for (JsonElement* e = values->elements; e != NULL; e = e->next) {
+      f64 x0 = getJsonNumber(e, "x0");
+      f64 y0 = getJsonNumber(e, "y0");
+      f64 x1 = getJsonNumber(e, "x1");
+      f64 y1 = getJsonNumber(e, "y1");
+      
+      run = referenceHaversine(x0, y0, x1, y1);
+      sum += run;
+      N++;
+      // if ((int)N % 1000 == 0) {
+      //   printf("Summed %g pairs.\n", N);
+      // }
+      if (DEBUG_) printf("x0 = %g, y0 = %g, x0 = %g, x1 = %g | Haversine distance = %g\n", x0, y0, x1, y1, run);
     }
+    printf("Haversine distance = %g/%g = %g\n", sum, N, sum/N);
+  } else {
+    fprintf(stderr, "Error, can't find pairs.\n");
   }
 
   freeParser(&parser);

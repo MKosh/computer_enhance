@@ -8,13 +8,16 @@ target_compile_definitions(parse PUBLIC
 
 target_compile_options(parse PRIVATE
   -fsanitize=address,leak
-  -static-libasan
+  -static-libsan
   -fno-omit-frame-pointer
+  -Wall
+  -Wextra
+  -Werror
 )
 
 target_link_options(parse PRIVATE
   -fsanitize=address,leak
-  -static-libasan
+  -static-libsan
   -fno-omit-frame-pointer
   -lm
 )
