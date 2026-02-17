@@ -524,15 +524,15 @@ JsonArray* parseJsonArray(JsonParser* parser)
 
     if (array->elements == NULL) {
       array->elements = new_element;
-      // temp = array->elements;
-    } else {
       temp = array->elements;
-      while (temp->next != NULL) {
-        temp = temp->next;
+    } else {
+      // temp = array->elements;
+      while (temp->next != NULL) { // Hottest path?
+        temp = temp->next; //hottest path?
       }
       temp->next = new_element;
       // temp->next = new_element;
-      // temp = new_element;
+      temp = new_element;
     }
 
     consumeWhitespace(parser);
