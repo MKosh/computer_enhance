@@ -7,6 +7,8 @@
 #include "utils.h"
 #include "json.h"
 
+static int DEBUG_ = 0;
+
 ////////////////////////////////////////////////////////////////////////////////
 ///
 typedef struct {
@@ -36,6 +38,8 @@ void initParser(JsonParser* parser, String source);
 void clearParser(JsonParser* parser);
 void freeParser(JsonParser* parser);
 
+void initJsonDocument(JsonDocument* doc);
+
 bool parseJsonDoc(JsonParser* parser, JsonDocument* doc);
 JsonElement* parse(JsonParser* parser);
 JsonElement* parseJsonElement(JsonParser* parser);
@@ -64,6 +68,8 @@ JsonMember* getMember(JsonElement* root, const char* name);
 JsonMember* getJsonMember(JsonObject* obj);
 JsonObject* getJsonObject(JsonValue* value);
 void* getJsonValue(JsonElement* element);
+
+f64 getJsonNumber(JsonElement* element, const char* name);
 
 
 // JsonElement getElement(String name);

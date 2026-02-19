@@ -3,6 +3,8 @@ debug/
 .cache/
 compile_commands.json
 data/data.json
+data/data*.json
+data/data*.txt
 callgrind.out.*
 cachegrind.out.*
 vgcore*
