@@ -1,6 +1,6 @@
 add_executable(decode decode.cpp)
 
-add_executable(haversine haversine.c parser.c utils.c json.c)
+add_executable(haversine haversine.c parser.c utils.c json.c metrics.c mem.c)
 
 target_compile_definitions(haversine PUBLIC
   "$<$<CONFIG:DEBUG>:DEBUG>"
