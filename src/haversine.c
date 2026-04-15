@@ -11,6 +11,15 @@
 #include "metrics.h"
 
 ////////////////////////////////////////////////////////////////////////////////
+/// Global across Translation Units
+extern Profiler prof;
+extern u64 TimeStampIndex;
+extern u64 GlobalProfParent;
+i32 DEBUG_ = 0;
+/// Global across Translation Units
+////////////////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////////////////
 ///
 f64 radiansFromDegrees(f64 deg)
 {
@@ -38,8 +47,7 @@ f64 referenceHaversine(f64 x0, f64 y0, f64 x1, f64 y1)
 ////////////////////////////////////////////////////////////////////////////////
 ///
 int main(int argc, char* argv[]) {
-  Timer timer; 
-  timerInit(&timer);
+  profilerInit(&prof);
   char* file_arg;
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "-debug") == 0) {
@@ -51,16 +59,18 @@ int main(int argc, char* argv[]) {
 
   if (DEBUG_) printf("Starting %s\n", __FUNCTION__);
 
-  timerStart(&timer, "Read");
+  profilerBegin(&prof);
+  ProfileBlock(read, "Read Input");
   JsonParser parser;
   initParser(&parser, readFileStr(file_arg));
-  timerStop(&timer, "Read");
+  ProfileBlockEnd(read);
+
   JsonDocument doc;
   initJsonDocument(&doc);
 
   if (DEBUG_) printf("File contents:\n%s\n", parser.source.data);
 
-  timerStart(&timer, "Parse");
+  ProfileBlock(parse, "Parse");
   if (parseJsonDoc(&parser, &doc)) {
     fprintf(stderr, "Cannot parse file.\n");
   } else {
@@ -69,7 +79,7 @@ int main(int argc, char* argv[]) {
     if (DEBUG_) printf("JsonDoc contents:\n");
     if (DEBUG_) printf("\n");
   }
-  timerStop(&timer, "Parse");
+  profilerBlockEnd(&parse);
 
   JsonMember* pairs_node = getMember(doc.root, "pairs");
   if (pairs_node != NULL) {
@@ -77,7 +87,7 @@ int main(int argc, char* argv[]) {
     if (DEBUG_) printf("\nFound: %s\n", pairs_node->name.data);
     if (DEBUG_) printf("\n\n");
 
-    timerStart(&timer, "Sum");
+    ProfileBlock(Sum, "Sum");
     JsonArray* values = getJsonValue(pairs_node->element);
     f64 sum = 0;
     f64 N = 0;
@@ -94,19 +104,17 @@ int main(int argc, char* argv[]) {
       if (DEBUG_) printf("x0 = %g, y0 = %g, x0 = %g, x1 = %g | Haversine distance = %g\n", x0, y0, x1, y1, run);
     }
     printf("Haversine distance = %g/%g = %g\n", sum, N, sum/N);
-    timerStop(&timer, "Sum");
+    profilerBlockEnd(&Sum);
   } else {
     fprintf(stderr, "Error, can't find pairs.\n");
   }
 
-  timerStart(&timer, "Dealloc");
+  ProfileBlock(dealloc, "Deallocation");
   freeParser(&parser);
   freeJsonDoc(&doc);
-  timerStop(&timer, "Dealloc");
+  profilerBlockEnd(&dealloc);
 
-  timerEnd(&timer);
-  timerPrint(&timer);
-  timerFree(&timer);
+  profilerEndAndPrint(&prof);
 
   if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
   return 0;

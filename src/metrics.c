@@ -3,8 +3,133 @@
 #include <string.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <assert.h>
 
-const u64 microseconds = 1000000;
+////////////////////////////////////////////////////////////////////////////////
+/// Static globals
+static const u64 microseconds = 1000000;
+#define TABLE_MAX_LOAD 0.75
+/// Static globals
+////////////////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////////////////
+/// Extern globals
+Profiler prof = {0};
+extern i32 DEBUG_;
+u64 TimeStampIndex = 1;
+u64 GlobalProfParent;
+/// Extern globals
+////////////////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////////////////
+///
+void profilerInit(Profiler* prof) {
+  prof->start = 0;
+  prof->stop = 0;
+  // prof->index = 1;
+  // prof->capacity = 4096;
+  // prof->parentIndex = 1;
+  // prof->times = (TimeStamp*)malloc(sizeof(TimeStamp)*prof->capacity);
+  if (DEBUG_) printf("Profiler initialized.\n");
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
+void profilerBegin(Profiler* prof)
+{
+  prof->start = readCpuTimer();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
+void profilerEnd(Profiler* prof)
+{
+  prof->stop = readCpuTimer();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
+ProfBlock profilerBlockBegin([[maybe_unused]]const char* label, u64 index)
+{
+  // if (prof->index + 1 > prof->capacity) {
+  //   prof->capacity *= 2;
+  //   prof->times = realloc(prof->times, sizeof(TimeStamp) * prof->capacity);
+  // }
+ 
+  // block->ParentIndex = GlobalProfParent;
+  // block->StampIndex = index;
+  // block->label = label;
+  //
+  // TimeStamp* anchor = prof.times + block->StampIndex;
+  // block->OldTSCElapsedInclusive = anchor->time_elapsed_inclusive;
+  //
+  // GlobalProfParent = index;
+  // block->StartTSC = readCpuTimer();
+  assert(index < 4096 && "Too many profiler time stamps");
+  ProfBlock block;
+
+  block.ParentIndex = GlobalProfParent;
+  block.StampIndex = index;
+  block.label = label;
+
+  TimeStamp* anchor = prof.times + block.StampIndex;
+  block.OldTSCElapsedInclusive = anchor->time_elapsed_inclusive;
+
+  GlobalProfParent = index;
+  block.StartTSC = readCpuTimer();
+
+  return block;
+  
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
+void profilerBlockEnd(ProfBlock* block)
+{
+  u64 elapsed = readCpuTimer() - block->StartTSC;
+  GlobalProfParent = block->ParentIndex;
+
+  TimeStamp* parent = prof.times + block->ParentIndex;
+  TimeStamp* anchor = prof.times + block->StampIndex;
+
+  parent->time_elapsed_exclusive -= elapsed;
+  anchor->time_elapsed_exclusive += elapsed;
+  anchor->time_elapsed_inclusive = block->OldTSCElapsedInclusive + elapsed;
+
+  anchor->label = block->label;
+}
+
+void printTimeElapsed(u64 total_time, TimeStamp* anchor, u64 freq)
+{
+  f64 percent = 100.0 * ((f64)anchor->time_elapsed_exclusive / (f64)total_time);
+  printf("  %s: %gms (%.2f%%", anchor->label, 1000.0 * ((f64)anchor->time_elapsed_exclusive / (f64)freq), percent);
+  if (anchor->time_elapsed_inclusive != anchor->time_elapsed_exclusive) {
+    f64 percent_with_children = 100.0 * ((f64)anchor->time_elapsed_inclusive / (f64)total_time);
+    printf(", %.2f%% w/ children", percent_with_children);
+  }
+
+  printf(")\n");
+}
+////////////////////////////////////////////////////////////////////////////////
+///
+void profilerEndAndPrint(Profiler* prof)
+{
+  prof->stop = readCpuTimer();
+  u64 cpu_freq = estimateCpuFreq();
+
+  u64 total_elapsed = prof->stop - prof->start;
+
+  if (cpu_freq) {
+    printf("\nTotal time: %0.4fms (CPU freq: %gGHz)\n", 1000.0 * ((f64)total_elapsed / (f64)cpu_freq), (f64)cpu_freq/1000000000.);
+  }
+
+  for (u32 index = 0; index < 4096; ++index) {
+    TimeStamp* anchor = prof->times + index;
+    if (anchor->time_elapsed_inclusive) {
+      printTimeElapsed(total_elapsed, anchor, cpu_freq);
+    }
+  }
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 ///

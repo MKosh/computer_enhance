@@ -1,6 +1,7 @@
 #pragma once
 
 #include "utils.h"
+#include <stdbool.h>
 
 // const u64 microseconds = 1000000;
 
@@ -16,55 +17,87 @@
 ////////////////////////////////////////////////////////////////////////////////
 ///
 u64 readOsTimer(void);
-// {
-//   struct timeval value;
-//   gettimeofday(&value, 0);
-//
-//   u64 result = microseconds*(u64)value.tv_sec + (u64)value.tv_usec;
-//   return result;
-// }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
 u64 readCpuTimer(void);
-// {
-//   return __rdtsc();
-// }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
 u64 estimateCpuFreq(void);
-// {
-//
-//   u64 milliseconds_to_wait = 100;
-//   u64 os_freq = microseconds;
-//
-//   u64 cpu_start = readCpuTimer();
-//   u64 os_start = readOsTimer();
-//   u64 os_end = 0;
-//   u64 os_elapsed = 0;
-//   u64 os_wait_time = os_freq * milliseconds_to_wait / 1000;
-//
-//   while (os_elapsed < os_wait_time) {
-//     os_end = readOsTimer();
-//     os_elapsed = os_end - os_start;
-//   }
-//
-//   u64 cpu_end = readCpuTimer();
-//
-//   u64 cpu_elapsed = cpu_end - cpu_start;
-//   u64 cpu_freq = 0;
-//   if (os_elapsed) {
-//     cpu_freq = os_freq * cpu_elapsed / os_elapsed;
-//   }
-//
-//   return cpu_freq;
-// }
 
 #endif
 
+/*
+ * haversine.c
+ * int main() {
+ *   Profiler prof;
+ *   profilerBegin(prof);
+ *   profileBlockBegin("Read");
+ *   readFile
+ *   profileBlockEnd("Read");
+ *   profileBlockBegin("Parse");
+ *   parseJSON();
+ *   profileBlockEnd("Parse");
+ *   etc.
+ * }
+ *
+ * parse.c
+ * auto parseJSON() {
+ *   Profiler prof;
+ *   profilerBegin(prof);
+ *   profileBlockBegin("Parse element");
+ *   parseJsonElement();
+ *   profileBlockEnd("Parse element");
+ *   profilerEnd(prof);
+ * }
+ *
+ * auto parseJsonElement() {
+ *   
+ * }
+ *
+ */
+
+typedef struct TimeStamp TimeStamp;
+typedef struct Profiler Profiler;
+typedef struct ProfBlock ProfBlock;
+
+struct TimeStamp {
+  u64 time_elapsed_exclusive;
+  u64 time_elapsed_inclusive;
+  const char* label;
+};
+
+struct ProfBlock {
+  const char* label;
+  u64 OldTSCElapsedInclusive;
+  u64 StartTSC;
+  u64 ParentIndex;
+  u64 StampIndex;
+};
+
+struct Profiler {
+  u64 start;
+  u64 stop;
+  TimeStamp times[4096];
+};
+
+
+#define ProfileBlock(name, label) ProfBlock name = profilerBlockBegin(label, TimeStampIndex++)
+#define ProfileBlockEnd(name) profilerBlockEnd(&(name));
+
+void profilerInit(Profiler* prof);
+void profilerBegin(Profiler* prof);
+void profilerEnd(Profiler* prof);
+ProfBlock profilerBlockBegin(const char* label, u64 index);
+void profilerBlockEnd(ProfBlock* block);
+void profilerEndAndPrint(Profiler* prof);
+void profilerFree(Profiler* prof);
+void printTimeElapsed(u64 total_time, TimeStamp* anchor, u64 freq);
+
 typedef struct Times Times;
 typedef struct Timer Timer;
+
 struct Times {
   String key;
   u64 start;
@@ -78,7 +111,7 @@ struct Timer {
   Times* times;
 };
 
-# define TABLE_INIT_SIZE 67 
+#define TABLE_INIT_SIZE 67 
 void timerInit(Timer* timer);
 void timerFree(Timer* timer);
 void timerStart(Timer* timer, const char* label);
