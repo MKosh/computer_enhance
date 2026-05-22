@@ -1,6 +1,6 @@
 add_executable(decode decode.cpp)
 
-add_executable(haversine haversine.c parser.c utils.c json.c metrics.c mem.c)
+add_executable(haversine haversine.c parser.c utils.c json.c metrics.c mem.c arena_list.c)
 
 target_compile_definitions(haversine PUBLIC
   "$<$<CONFIG:DEBUG>:DEBUG>"
@@ -16,6 +16,24 @@ target_compile_options(haversine PRIVATE
 )
 
 target_link_options(haversine PRIVATE
+  -fsanitize=address,leak
+  -static-libsan
+  -fno-omit-frame-pointer
+  -lm
+)
+
+# Test -------------------------------------------------------------------------
+add_executable(test test.c mem.c arena_list.c)
+target_compile_options(test PRIVATE
+  -fsanitize=address,leak
+  -static-libsan
+  -fno-omit-frame-pointer
+  -Wall
+  -Wextra
+  -Werror
+)
+
+target_link_options(test PRIVATE
   -fsanitize=address,leak
   -static-libsan
   -fno-omit-frame-pointer

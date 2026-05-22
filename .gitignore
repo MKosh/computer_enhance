@@ -5,6 +5,7 @@ compile_commands.json
 data/data.json
 data/data*.json
 data/data*.txt
+src/test.c
 callgrind.out.*
 cachegrind.out.*
 vgcore*

@@ -1,6 +1,10 @@
 #include "mem.h"
+#include <assert.h>
+#include <stdalign.h>
+#include <stddef.h>
+#include <stdio.h>
 
-void* reallocate(void* pointer,[[maybe_unused]] size_t old_size, size_t new_size)
+void* reallocate(void* pointer, [[maybe_unused]] size_t old_size, size_t new_size)
 {
   if (new_size == 0) {
     free(pointer);
@@ -11,3 +15,4 @@ void* reallocate(void* pointer,[[maybe_unused]] size_t old_size, size_t new_size
   if (result == NULL) exit(1);
   return result;
 }
+
