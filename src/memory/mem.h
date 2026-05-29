@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <stddef.h>
 #include <assert.h>
-#include "utils.h"
+#include "types.h"
 
 #define ALLOCATE(type, count) \
   (type*)reallocate(NULL, 0, sizeof(type) * (count))
@@ -28,10 +28,6 @@ void* reallocate(void* pointer, size_t old_size, size_t new_size);
 //
 // typedef struct Arena Arena;
 //
-typedef ptrdiff_t dptr;
-typedef uintptr_t uptr;
-typedef intptr_t  iptr;
-typedef size_t   usize;    
 
 static inline uptr align_up(uptr ptr, size_t align) {
   assert((align & (align - 1)) == 0 && "align must be a power of two");

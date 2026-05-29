@@ -1,6 +1,7 @@
 #pragma once
 
-#include "utils.h"
+#include "types.h"
+#include "string8.h"
 #include <stdbool.h>
 
 // const u64 microseconds = 1000000;

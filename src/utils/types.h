@@ -15,6 +15,11 @@ using i64 = std::int64_t;
 using f32 = float;
 using f64 = double;
 
+using dptr = ptrdiff_t;
+using uptr = uintptr_t;
+using iptr = intptr_t;
+using usize= size_t;
+
 #else
 
 #include <stdint.h>
@@ -31,16 +36,10 @@ typedef int64_t  i64;
 typedef float  f32;
 typedef double f64;
 
-typedef struct {
-  char* data;   ///< Pointer to the start of the string.
-  size_t count; ///< Length of the string including the null terminator.
-} String;
-
-// typedef struct String String;
-String readFileStr(const char* filename);
-void printString(String string);
-
-void freeString(String* string);
+typedef ptrdiff_t dptr;
+typedef uintptr_t uptr;
+typedef intptr_t  iptr;
+typedef size_t   usize;    
 
 #endif
 

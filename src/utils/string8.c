@@ -1,10 +1,11 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#include "utils.h"
+#include "types.h"
+#include "string8.h"
 
 ////////////////////////////////////////////////////////////////////////////////
-///
+/// \brief read a file into a normal C buffer
 char* readFile(const char* filename, u64* size)
 {
   FILE* file = fopen(filename, "r");
@@ -42,7 +43,7 @@ char* readFile(const char* filename, u64* size)
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
-String readFileStr(const char* filename)
+String string_readFile(const char* filename)
 {
   String ret;
   FILE* file = fopen(filename, "r");
@@ -54,40 +55,53 @@ String readFileStr(const char* filename)
   printf("Reading file %s\n", filename);
 
   fseek(file, 0L, SEEK_END);
-  size_t file_size = ftell(file);
+  usize file_size = ftell(file);
+  file_size += 1; // Add an extra byte for the null terminator
   rewind(file);
   
-  char* buffer = (char*)malloc(file_size + 1);
+  char* buffer = (char*)malloc(file_size);
   if (buffer == NULL) {
     fprintf(stderr, "Not enough memory to read \"%s\".\n", filename);
     exit(74);
   }
 
-  size_t bytes_read = fread(buffer, sizeof(char), file_size, file);
-  if (bytes_read < file_size) {
+  size_t bytes_read = fread(buffer, sizeof(char), file_size - 1, file);
+  if (bytes_read < file_size - 1) {
     fprintf(stderr, "Could not read file \"%s\".\n", filename);
     exit(74);
   }
-  buffer[file_size] = '\0';
+  buffer[file_size - 1] = '\0';
 
   fclose(file);
-  ret.data = buffer;
-  ret.count = file_size + 1;
+  ret.str = buffer;
+  ret.len = file_size;
   return ret;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
-void freeString(String* string)
+void string_free(String string)
 {
-  free(string->data);
-  string->data = NULL;
-  string->count = 0;
+  free(string.str);
+  string.str = NULL;
+  string.len = 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
-void printString(String string)
+void string_println(String string)
 {
-  printf("%s", string.data);
+  printf("%.*s\n", (int)string.len, string.str);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
+void string_print(String string)
+{
+  printf("%.*s", (int)string.len, string.str);
+}
+
+StringView sv_fromString(const String* string)
+{
+  return (StringView){.len = string->len, .str = string->str};
 }

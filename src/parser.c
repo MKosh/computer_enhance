@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <math.h>
 
-#include "utils.h"
+#include "types.h"
 #include "json.h"
 #include "parser.h"
 #include "metrics.h"

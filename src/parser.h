@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
-#include "utils.h"
+#include "types.h"
 #include "json.h"
 
 ////////////////////////////////////////////////////////////////////////////////

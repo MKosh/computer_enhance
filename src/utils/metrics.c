@@ -139,11 +139,11 @@ void timerInit(Timer* timer)
   timer->capacity = TABLE_INIT_SIZE;
   timer->times = ALLOCATE(Times, TABLE_INIT_SIZE);
   for (size_t i = 1; i < timer->capacity; i++) {
-    timer->times[i].key = (String){ .data = "", .count = 0 };
+    timer->times[i].key = (String){ .str = "", .len = 0 };
     timer->times[i].start = 0;
     timer->times[i].stop = 0;
   }
-  timer->times[0].key = (String){ .data = "Total", .count = strlen("Total") };
+  timer->times[0].key = (String){ .str = "Total", .len = strlen("Total") };
   timer->times[0].start = readCpuTimer();
   timer->times[0].stop = 0;
   // printf("Starting timer at %lu", timer->times[0].start);
@@ -172,7 +172,7 @@ void timerStart(Timer* timer, const char* label)
 {
   bool found_timer = false;
   for (size_t i = 0; i < timer->capacity; i++) {
-    if (strcmp(timer->times[i].key.data, label) == 0) {
+    if (strcmp(timer->times[i].key.str, label) == 0) {
       // Found an already started timer
       found_timer = true;
     }
@@ -182,8 +182,8 @@ void timerStart(Timer* timer, const char* label)
     fprintf(stderr, "Found an already started timer.\n");
   } else {
     for (size_t i = 0; i < timer->capacity; i++) {
-      if (strcmp(timer->times[i].key.data, "") == 0) {
-        timer->times[i].key = (String){ .data = (char*)label, .count = strlen(label) };
+      if (strcmp(timer->times[i].key.str, "") == 0) {
+        timer->times[i].key = (String){ .str = (char*)label, .len = strlen(label) };
         timer->times[i].start = readCpuTimer();
         found_timer = true;
         /* DEBUG */
@@ -204,7 +204,7 @@ void timerStart(Timer* timer, const char* label)
 void timerStop(Timer* timer, const char* label)
 {
   for (size_t i = 0; i < timer->capacity; i++) {
-    if (strcmp(timer->times[i].key.data, label) == 0) {
+    if (strcmp(timer->times[i].key.str, label) == 0) {
       timer->times[i].stop = readCpuTimer();
 
       /* DEBUG */
@@ -225,9 +225,9 @@ void timerPrint(Timer* timer)
   u64 freq = estimateCpuFreq();
   printf("Total time: %gms (%gs) (CPU freq: %luHz = %gGHz)\n", (double)total_time/freq*1000, (double)total_time/freq, freq, (double)freq/1000000000.);
   for (size_t i = 1; i < timer->capacity; i++) {
-    if (timer->times[i].key.data[0] != '\0') {
+    if (timer->times[i].key.str[0] != '\0') {
       u64 time = timer->times[i].stop - timer->times[i].start;
-      printf("  %s: %gms (%g%%)\n", timer->times[i].key.data, (double)time/freq*1000, (double)time/total_time*100);
+      printf("  %s: %gms (%g%%)\n", timer->times[i].key.str, (double)time/freq*1000, (double)time/total_time*100);
     }
   }
 }

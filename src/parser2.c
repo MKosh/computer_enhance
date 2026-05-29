@@ -1,0 +1,281 @@
+#include "parser2.h"
+#include "types.h"
+#include "string8.h"
+#include "allocator.h"
+#include "arena_list.h"
+
+#include <math.h>
+
+// Check if we're at the end of the file
+bool isAtEnd(JsonParser* jp)
+{
+  return (jp->at >= jp->source.len);
+}
+
+// Look at the next character in the file, but don't advance
+char peekNext(JsonParser* jp) {
+  if (jp->at + 1 >= jp->source.len) {
+    return EOF;
+  }
+  return jp->source.str[jp->at + 1];
+}
+
+// Look at the current character in the file, but don't advance
+char peek(JsonParser* jp)
+{
+  return jp->source.str[jp->at];
+}
+
+// Advance to the next character in the file 
+void advance(JsonParser* jp)
+{
+  jp->at++;
+}
+
+// Advance one character then return that new character
+char advanceAndPeek(JsonParser* jp)
+{
+  return jp->source.str[++(jp->at)];
+}
+
+// Return the current character then advance to the next one
+char peekAndAdvance(JsonParser* jp)
+{
+  return jp->source.str[(jp->at)++];
+}
+
+// Advance n characters ahead if we can, otherwise go as far as possible
+void advanceBy(JsonParser* jp, size_t n)
+{
+  if (jp->at + n > jp->source.len) {
+    jp->at += jp->source.len - jp->at;
+  } else {
+    jp->at += n;
+  }
+}
+
+// Check if a character is a digit
+bool isDigit(char c)
+{
+  return c >= '0' && c <= '9';
+}
+
+// Check if a character is AlphaNumeric
+bool isAlpha(char c)
+{
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+}
+
+// Skip over whitespace
+void jp_consumeWhitespace(JsonParser* jp) {
+  while (!isAtEnd(jp)) {
+    switch(peek(jp)) {
+      case ' ':
+      case '\t':
+      case '\n':
+      case '\r': {
+                   jp->at++;
+                   break;
+                 }
+      default:
+                 return;
+    }
+  }
+}
+
+// Initialize the parser config
+JsonParserConfig jp_parserConfigInit(Allocator* allocator, Allocator* intern, bool allow_comments) {
+  return (JsonParserConfig){.allocator = allocator, .intern_allocator = intern, .allow_comments = allow_comments};
+}
+
+// Initialize the parser itself
+JsonParser jp_parserInit(JsonParserConfig* jpc, StringView source) {
+  return (JsonParser){.config = jpc, .source = source, .at = 0, .had_error = false, .error = {.code = JSON_OK}};
+}
+
+// Parse a JsonObject and leave jp->at pointing at the first character after the closing '}'
+JsonObject jp_parseJsonObject([[maybe_unused]] JsonParser* jp)
+{
+  // Stub function to do later. I will need to call jp_parseJsonValue to parse the value for each field
+  return (JsonObject){ 0 };
+
+  // Advance off of the opening '{'
+  // advance(jp);
+  // JsonObject obj = { 0 };
+}
+
+// Parse a JsonArray and leave jp->at pointing at the first character after the closing ']'
+JsonArray jp_parseJsonArray([[maybe_unused]] JsonParser* jp)
+{
+  // Stub function to do later. I will need to call jp_parseJsonValue to parse each value
+  return (JsonArray){ 0 };
+}
+
+// Parse a JsonNumber and leave jp->at pointing at the first character after the last digit
+f64 jp_parseJsonNumber(JsonParser* jp)
+{
+  f64 number;
+
+  const char* start = &jp->source.str[jp->at];
+  char* end = NULL;
+  number = strtod(start, &end);
+
+  if (end == start) {
+    fprintf(stderr, "Error parsing number, no valid numbers.\n");
+  }
+
+  if (isnan(number)) {
+    fprintf(stderr, "Error parsing number, got NAN.\n");
+  }
+
+  if (jp->had_error) {
+    static char err_message[] = "Error parsing number";
+    jp->had_error = true;
+    jp->error = (JsonError){.code = JSON_ERROR_UNEXPECTED_TOKEN, 0, 0, {.len = strlen(err_message), .str = err_message}};
+    return NAN;
+  }
+  // advance by the number of characters strtod consumed.
+  jp->at += (end - start);
+
+  return number;
+}
+
+// Parse a JsonNumber and leave jp->at pointing at the first character after the closing quote
+StringView jp_parseJsonString(JsonParser* jp)
+{
+  // Advance past the starting quote
+  advance(jp); // advance is safe because we know we're at an opening quote
+  usize count = 0;
+  usize start = jp->at;
+  while (peek(jp) != '"' && !isAtEnd(jp)) {
+    count++; // Count each non-quote character
+    advance(jp);
+    // Skip escape characters
+    if (peek(jp) == '\\') {
+      advanceBy(jp, 2);
+    }
+  }
+  if (isAtEnd(jp)) {
+    // At end but haven't seen the closing quote?
+    fprintf(stderr, "Error unexpected end.\n");
+    jp->had_error = true;
+    static char err_message[] = "Unexpected end of file";
+    jp->error = (JsonError){.code = JSON_ERROR_UNEXPECTED_END, 0, 0, {.len = strlen(err_message), .str = err_message}};
+    return (StringView){.len = 0, .str = NULL};
+  }
+
+  // Advance past the closing quote
+  advance(jp);
+
+  // Add an extra space for the null terminator
+  char* buf = allocator_alloc(jp->config->allocator, count + 1, 1);
+  memcpy(buf, &(jp->source.str[start]), count);
+  buf[count] = '\0';
+
+  return (StringView){.len = count, .str = buf};
+}
+
+// Parse a Json Boolean and leave jp->at pointing at the first character after the last letter
+// Possibly not used due to bools being simple to parse directly in jp_parseJsonValue
+bool jp_parseJsonBoolean(JsonParser* jp);
+
+JsonResult jp_parseJsonValue(JsonParser* jp) {
+  JsonValue value = { 0 };
+  jp_consumeWhitespace(jp);
+  switch (peek(jp)) {
+    case '{': {
+                value.type = JSON_OBJECT;
+                value.as.object = jp_parseJsonObject(jp);
+                break;
+              }
+    case '[': {
+                value.type = JSON_ARRAY;
+                value.as.array = jp_parseJsonArray(jp);
+                break;
+              }
+    case '"': {
+                value.type = JSON_STRING;
+                value.as.string = jp_parseJsonString(jp);
+                break;
+              }
+    case 't': {
+                if (jp->at + 4 <= jp->source.len &&
+                    strncmp(&(jp->source.str[jp->at]), "true", 4) == 0) {
+                  value.type = JSON_BOOL;
+                  value.as.boolean = true;
+                  advanceBy(jp, 4);
+                }
+                break;
+              }
+    case 'f': {
+                if (jp->at + 5 <= jp->source.len &&
+                    strncmp(&(jp->source.str[jp->at]), "false", 5) == 0) {
+                  value.type = JSON_BOOL;
+                  value.as.boolean = false;
+                  advanceBy(jp, 5);
+                }
+                break;
+              }
+    case 'n': {
+                if (jp->at + 4 <= jp->source.len &&
+                    strncmp(&(jp->source.str[jp->at]), "null", 4) == 0) {
+                  value.type = JSON_NULL;
+                  // NULL carries no actual value
+                  advanceBy(jp, 4);
+                }
+                break;
+              }
+    case '-':
+    case '0':
+    case '1':
+    case '2':
+    case '3':
+    case '4':
+    case '5':
+    case '6':
+    case '7':
+    case '8':
+    case '9': {
+                value.type = JSON_NUMBER;
+                value.as.number = jp_parseJsonNumber(jp);
+                break;
+              }
+    default: {
+               jp->had_error = true;
+               static char err_message[] = "Unexpected character";
+               jp->error = (JsonError){.code = JSON_ERROR_UNEXPECTED_TOKEN, 0, 0, {.len = strlen(err_message), .str = err_message}};
+               break;
+             }
+  }
+  if (jp->had_error) {
+    // Handle error
+    fprintf(stderr, "Error: %.*s\n", (int)jp->error.message.len, jp->error.message.str);
+    return (JsonResult){.root = NULL, .error = jp->error};
+  }
+
+  JsonValue* result = allocator_new(jp->config->allocator, JsonValue);
+  *result = value;
+  return (JsonResult){.root = result, .error = {.code = JSON_OK}};
+}
+
+JsonResult jp_parseFile(JsonParserConfig* jpc, StringView file) {
+  JsonParser jp = jp_parserInit(jpc, file);
+  JsonResult root_node = jp_parseJsonValue(&jp);
+  if (root_node.root == NULL || jp.had_error == true) {
+    // Handle JsonError
+  }
+  return root_node;
+}
+
+void pretend_main() {
+  Allocator* arena = arena_list_allocator_create(10 * 1024 * 1024);
+  // Allocator* intern = arena_list_allocator_create(10 * 1024);
+
+  String file_contents = string_readFile("tests/test14.json");
+  JsonParserConfig jpc = jp_parserConfigInit(arena, NULL, true);
+  [[maybe_unused]] JsonResult root = jp_parseFile(&jpc, sv_fromString(&file_contents));
+
+  allocator_destroy(arena);
+  // allocator_destroy(intern);
+  string_free(file_contents);
+}
