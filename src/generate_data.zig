@@ -31,7 +31,7 @@ pub fn main() !void {
     var sum: f64 = undefined;
     var run: f64 = undefined;
     var avg: f64 = undefined;
-    const N: i64 = 1_000_000;
+    const N: i64 = 100_000;
 
     const n_ranges = 64;
     var ranges: [n_ranges]Range = undefined;

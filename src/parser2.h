@@ -16,14 +16,22 @@ typedef enum {
 typedef struct JsonValue JsonValue;
 typedef struct JsonArray JsonArray;
 typedef struct JsonObject JsonObject;
+typedef struct JsonFieldNode JsonFieldNode;
+typedef struct JsonField JsonField;
+typedef struct JsonValueNode JsonValueNode;
 
-typedef struct {
+struct JsonField {
     StringView key;
     JsonValue *value;
-} JsonField;
+};
+
+struct JsonFieldNode {
+  JsonField field;
+  JsonFieldNode* next;
+};
 
 struct JsonArray {
-  JsonValue** items;
+  JsonValue* items;
   size_t count;
 };
 
@@ -41,6 +49,11 @@ struct JsonValue {
         JsonArray  array;
         JsonObject object;
     } as;
+};
+
+struct JsonValueNode {
+  JsonValue value;
+  JsonValueNode* next;
 };
 
 typedef enum {
@@ -84,6 +97,25 @@ struct JsonParserConfig {
   bool allow_comments;
 };
 
-
 bool isAtEnd(JsonParser* jp);
-void pretend_main();
+void pretend_main(const char* file_name);
+char peekNext(JsonParser* jp);
+char peek(JsonParser* jp);
+void advance(JsonParser* jp);
+void advanceAndConsumeWhitespace(JsonParser* jp);
+char advanceAndPeek(JsonParser* jp);
+char peekAndAdvance(JsonParser* jp);
+void advanceBy(JsonParser* jp, size_t n);
+bool isDigit(char c);
+bool isAlpha(char c);
+void jp_consumeWhitespace(JsonParser* jp);
+JsonParserConfig jp_parserConfigInit(Allocator* allocator, Allocator* intern, bool allow_comments);
+JsonParser jp_parserInit(JsonParserConfig* jpc, StringView source);
+JsonObject jp_parseJsonObject([[maybe_unused]] JsonParser* jp);
+JsonArray jp_parseJsonArray([[maybe_unused]] JsonParser* jp);
+f64 jp_parseJsonNumber(JsonParser* jp);
+StringView jp_parseJsonString(JsonParser* jp);
+bool jp_parseJsonBoolean(JsonParser* jp);
+JsonResult jp_parseJsonValue(JsonParser* jp);
+JsonResult jp_parseFile(JsonParserConfig* jpc, StringView file);
+

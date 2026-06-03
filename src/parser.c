@@ -8,6 +8,7 @@
 #include "json.h"
 #include "parser.h"
 #include "metrics.h"
+#include "string8.h"
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Global across Translation Units
@@ -48,7 +49,7 @@ JsonMember* getMember(JsonElement* root, const char* name)
     if (obj == NULL) return NULL;
     member = obj->members;
     while (member != NULL) {
-      if (strcmp(name, member->name.data) == 0) {
+      if (strcmp(name, member->name.str) == 0) {
         ret = member;
         goto found;
       } else {
@@ -78,11 +79,11 @@ f64 getJsonNumber(JsonElement* element, const char* name)
 
   JsonObject* obj = element->value->as.obj;
   for (JsonMember* member = obj->members; member != NULL; member = member->next) {
-    if (strcmp(name, member->name.data) == 0) {
+    if (strcmp(name, member->name.str) == 0) {
       if (member->element->value->type == JSON_NUMBER) {
         return member->element->value->as.number;
       } else {
-        fprintf(stderr, "Found member named '%s', but it was not a number as expected.\n", member->name.data);
+        fprintf(stderr, "Found member named '%s', but it was not a number as expected.\n", member->name.str);
         return NAN;
       }
     }
@@ -188,8 +189,8 @@ void freeJsonValue(JsonValue* value)
       if (DEBUG_) printf("Freeing number: %g\n", value->as.number);
       break;
     case JSON_STRING: {
-      if (DEBUG_) printf("Freeing string: %s\n", value->as.string.data);
-      freeString(&(value->as.string));
+      if (DEBUG_) printf("Freeing string: %s\n", value->as.string.str);
+      string_free(value->as.string);
       break;
     }
     case JSON_ARRAY: {
@@ -231,8 +232,8 @@ void freeJsonMember(JsonMember* member)
     return;
   }
 
-  if (DEBUG_) printf("Freeing member: %s\n", member->name.data);
-  freeString(&member->name);
+  if (DEBUG_) printf("Freeing member: %s\n", member->name.str);
+  string_free(member->name);
   freeJsonElements(member->element);
   member->next = NULL;
   if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
@@ -293,7 +294,7 @@ void printJsonObject(JsonObject* obj)
   printf("{");
   for (JsonMember* member = obj->members; member != NULL; member = member->next) {
     printf("\"");
-    printString(member->name);
+    string_println(member->name);
     printf("\"");
     printf(": ");
     printJsonElement(member->element);
@@ -333,7 +334,7 @@ void printJsonValue(JsonValue* value)
     }
     case JSON_STRING: {
       if (DEBUG_) printf("Printing JSON_STRING\n");
-      printf("%s", value->as.string.data);
+      printf("%s", value->as.string.str);
       break;
     }
     case JSON_OBJECT: {
@@ -457,7 +458,7 @@ JsonObject* parseJsonObject(JsonParser* parser)
 
       JsonMember* new_member = (JsonMember*)malloc(sizeof(JsonMember));
 
-      new_member->name = (String){ .data = strdup(buffer), .count = index };
+      new_member->name = (String){ .str = strdup(buffer), .len = index };
       new_member->element = parseJsonElement(parser);
       new_member->next = NULL;
 
@@ -564,25 +565,25 @@ JsonArray* parseJsonArray(JsonParser* parser)
 ///
 String parseJsonString(JsonParser* parser)
 {
-  String string = { .data = NULL, .count = 0};
+  String string = { .str = NULL, .len = 0};
   advance(parser); // Advance off of the starting quotation mark.
 
   // Keep track of where the string starts to fill the data buffer later.
   u64 start = parser->at;
   while(peek(parser) != '"') {
-    string.count++;
+    string.len++;
     advance(parser);
   }
-  string.count++; // Don't forget space for the null terminator.
+  string.len++; // Don't forget space for the null terminator.
 
-  string.data = malloc(sizeof(char)*string.count);
+  string.str = malloc(sizeof(char)*string.len);
 
   parser->at = start;
 
-  for (u64 i = 0; i < string.count - 1; ++i) {
-    string.data[i] = advance(parser);
+  for (u64 i = 0; i < string.len - 1; ++i) {
+    string.str[i] = advance(parser);
   }
-  string.data[string.count - 1] = '\0';
+  string.str[string.len - 1] = '\0';
 
   consumeWhitespace(parser);
   advance(parser);
@@ -689,7 +690,7 @@ JsonElement* parseElement(JsonParser* parser)
   if (DEBUG_) printf("Starting %s\n", __FUNCTION__);
   JsonElement* element = malloc(sizeof(JsonElement));
 
-  while (parser->at < parser->source.count - 1) {
+  while (parser->at < parser->source.len - 1) {
     consumeWhitespace(parser);
     element->value = parseJsonValue(parser);
   }
@@ -749,7 +750,7 @@ bool parseJsonDoc(JsonParser *parser, JsonDocument *doc)
 ///
 void clearParser(JsonParser* parser)
 {
-  parser->source = (String){ .data = NULL, .count = 0 };
+  parser->source = (String){ .str = NULL, .len = 0 };
   parser->at = 0;
   parser->had_error = false;
 }
@@ -766,7 +767,7 @@ void initParser(JsonParser* parser, String source)
 ///
 void freeParser(JsonParser* parser)
 {
-  freeString(&(parser->source));
+  string_free(parser->source);
   clearParser(parser);
 }
 
@@ -788,29 +789,29 @@ bool isAlpha(char c)
 ///
 char advance(JsonParser* parser)
 {
-  if (DEBUG_) printf("Current char: parser[%ld] = %c\n", parser->at, parser->source.data[parser->at]);
+  if (DEBUG_) printf("Current char: parser[%ld] = %c\n", parser->at, parser->source.str[parser->at]);
   if (peekNext(parser) != '\0') {
     parser->at++;
   }
-  if (DEBUG_) printf("After step: parser[%ld] = %c\n", parser->at, parser->source.data[parser->at]);
-  return parser->source.data[parser->at - 1];
+  if (DEBUG_) printf("After step: parser[%ld] = %c\n", parser->at, parser->source.str[parser->at]);
+  return parser->source.str[parser->at - 1];
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
 char peekNext(JsonParser* parser)
 {
-  if (parser->at + 1 >= parser->source.count) {
+  if (parser->at + 1 >= parser->source.len) {
     return EOF;
   }
-  return parser->source.data[parser->at + 1];
+  return parser->source.str[parser->at + 1];
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
 char peek(JsonParser* parser)
 {
-  return parser->source.data[parser->at];
+  return parser->source.str[parser->at];
 }
 
 ////////////////////////////////////////////////////////////////////////////////

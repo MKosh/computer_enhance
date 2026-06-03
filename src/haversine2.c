@@ -8,6 +8,10 @@ i32 DEBUG_ = 0;
 int main([[maybe_unused]] int argc, [[maybe_unused]] char *argv[])
 {
   printf("Hello world.\n");
-  pretend_main();
+  if (argc >= 2) {
+    pretend_main(argv[1]);
+  } else {
+    pretend_main("data/data_10k.json");
+  }
   return EXIT_SUCCESS;
 }

@@ -4,7 +4,8 @@
 #include <stdbool.h>
 #include <math.h>
 
-#include "utils.h"
+#include "types.h"
+#include "string8.h"
 #include "json.h"
 #include "parser.h"
 
@@ -62,13 +63,13 @@ int main(int argc, char* argv[]) {
   profilerBegin(&prof);
   ProfileBlock(read, "Read Input");
   JsonParser parser;
-  initParser(&parser, readFileStr(file_arg));
+  initParser(&parser, string_readFile(file_arg));
   ProfileBlockEnd(read);
 
   JsonDocument doc;
   initJsonDocument(&doc);
 
-  if (DEBUG_) printf("File contents:\n%s\n", parser.source.data);
+  if (DEBUG_) printf("File contents:\n%s\n", parser.source.str);
 
   ProfileBlock(parse, "Parse");
   if (parseJsonDoc(&parser, &doc)) {
@@ -84,7 +85,7 @@ int main(int argc, char* argv[]) {
   JsonMember* pairs_node = getMember(doc.root, "pairs");
   if (pairs_node != NULL) {
     if (DEBUG_) printJsonElements(pairs_node->element);
-    if (DEBUG_) printf("\nFound: %s\n", pairs_node->name.data);
+    if (DEBUG_) printf("\nFound: %s\n", pairs_node->name.str);
     if (DEBUG_) printf("\n\n");
 
     ProfileBlock(Sum, "Sum");

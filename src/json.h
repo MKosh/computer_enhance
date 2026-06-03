@@ -1,7 +1,7 @@
 #pragma once
 
 #include "types.h"
-#include "string.h"
+#include "string8.h"
 #include <stdbool.h>
 
 

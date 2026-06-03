@@ -3,6 +3,7 @@
 #include "string8.h"
 #include "allocator.h"
 #include "arena_list.h"
+#include "fixed_buffer.h"
 
 #include <math.h>
 
@@ -30,6 +31,24 @@ char peek(JsonParser* jp)
 void advance(JsonParser* jp)
 {
   jp->at++;
+}
+
+void advanceAndConsumeWhitespace(JsonParser* jp)
+{
+  jp->at++;
+  while (!isAtEnd(jp)) {
+    switch(peek(jp)) {
+      case ' ':
+      case '\t':
+      case '\n':
+      case '\r': {
+                   jp->at++;
+                   break;
+                 }
+      default:
+                 return;
+    }
+  }
 }
 
 // Advance one character then return that new character
@@ -67,7 +86,8 @@ bool isAlpha(char c)
 }
 
 // Skip over whitespace
-void jp_consumeWhitespace(JsonParser* jp) {
+void jp_consumeWhitespace(JsonParser* jp)
+{
   while (!isAtEnd(jp)) {
     switch(peek(jp)) {
       case ' ':
@@ -84,12 +104,14 @@ void jp_consumeWhitespace(JsonParser* jp) {
 }
 
 // Initialize the parser config
-JsonParserConfig jp_parserConfigInit(Allocator* allocator, Allocator* intern, bool allow_comments) {
+JsonParserConfig jp_parserConfigInit(Allocator* allocator, Allocator* intern, bool allow_comments)
+{
   return (JsonParserConfig){.allocator = allocator, .intern_allocator = intern, .allow_comments = allow_comments};
 }
 
 // Initialize the parser itself
-JsonParser jp_parserInit(JsonParserConfig* jpc, StringView source) {
+JsonParser jp_parserInit(JsonParserConfig* jpc, StringView source)
+{
   return (JsonParser){.config = jpc, .source = source, .at = 0, .had_error = false, .error = {.code = JSON_OK}};
 }
 
@@ -97,18 +119,160 @@ JsonParser jp_parserInit(JsonParserConfig* jpc, StringView source) {
 JsonObject jp_parseJsonObject([[maybe_unused]] JsonParser* jp)
 {
   // Stub function to do later. I will need to call jp_parseJsonValue to parse the value for each field
-  return (JsonObject){ 0 };
+  // return (JsonObject){ 0 };
+
+  JsonObject obj = { 0 };
+  JsonFieldNode* head = NULL;
+  JsonFieldNode* tail = NULL;
+  usize count = 0;
 
   // Advance off of the opening '{'
-  // advance(jp);
-  // JsonObject obj = { 0 };
+  advanceAndConsumeWhitespace(jp);
+  
+  // Check for empty object
+  if (peek(jp) == '}') {
+    // obj.count = 0;
+    // obj.fields = NULL;
+    advance(jp);
+    return obj;
+  } 
+
+  // TODO: Test both with and without a local arena allocator for building the
+  // JsonFieldNode linked list:
+  // u8 buf[4096];
+  // Allocator* buffer = fixed_buffer_allocator_create(buf, 4096);
+
+  while (!isAtEnd(jp)) {
+    // Look for a string to denote the start of a key
+    if ((peek(jp) != '"')) {
+      // Error the field should have a key
+      fprintf(stderr, "Error, expected an opening quote");
+      static char err_message[] = "Unexpected token, expected opening quote";
+      jp->had_error = true;
+      jp->error = (JsonError){.code = JSON_ERROR_UNEXPECTED_TOKEN, 0, 0, {.len = strlen(err_message), .str = err_message}}; 
+      break;
+    }
+  
+    // We must be at the start of a key so parse it as a string
+    StringView key = jp_parseJsonString(jp);
+    if (jp->had_error) break;
+
+    // Look for a colon to separate the key and value
+    jp_consumeWhitespace(jp);
+    if (peek(jp) != ':') {
+      fprintf(stderr, "Error, expected colon.\n");
+      jp->had_error = true;
+      static char err_message[] = "Expected colon";
+      jp->error = (JsonError){.code = JSON_ERROR_UNEXPECTED_TOKEN, 0, 0, {.len = strlen(err_message), .str = err_message}};
+      break;
+    }
+
+    // Advance off of the colon and consume whitespace up to the start of the value
+    advanceAndConsumeWhitespace(jp);
+
+    JsonField field = { 0 };
+    JsonResult value = { 0 };
+
+    field.key = key;
+
+    // Parse the field's value
+    value = jp_parseJsonValue(jp);
+    if (jp->had_error) break;
+    field.value = value.root;
+
+    JsonFieldNode* node = allocator_new(jp->config->allocator, JsonFieldNode);
+    node->field = field;
+    node->next = NULL;
+
+    if (tail) tail->next = node; 
+    else head = node;
+    tail = node;
+    count++;
+
+    // Consume whitespace after the value and look for a comma to know if the loop
+    // should continue
+    jp_consumeWhitespace(jp);
+    if (peek(jp) == ',') {
+      advanceAndConsumeWhitespace(jp);
+      continue;
+    }
+    if (peek(jp) == '}') {
+      advance(jp);
+      break;
+    }
+  }
+
+  if (jp->had_error) {
+    // Handle error
+    return (JsonObject){ 0 };
+  }
+
+  // Turn the linked list into an array
+  obj.fields = allocator_alloc(jp->config->allocator, count * sizeof(JsonField), alignof(JsonField));
+  JsonFieldNode* current = head;
+  for (usize i = 0; i < count; i++) {
+    obj.fields[i] = current->field;
+    current = current->next;
+  }
+  obj.count = count;
+
+  return obj;
 }
 
 // Parse a JsonArray and leave jp->at pointing at the first character after the closing ']'
 JsonArray jp_parseJsonArray([[maybe_unused]] JsonParser* jp)
 {
   // Stub function to do later. I will need to call jp_parseJsonValue to parse each value
-  return (JsonArray){ 0 };
+  // return (JsonArray){ 0 };
+  
+  JsonArray array = { 0 };
+  usize count = 0;
+  
+  // Advance off of the starting '['
+  advanceAndConsumeWhitespace(jp);
+
+  // Check for an empty array
+  if (peek(jp) == ']') {
+    return array;
+  }
+
+  // Allocate space for the JsonArray values dynamically
+  usize capacity = 32;
+  JsonValue** temp = malloc(sizeof(JsonValue*) * capacity);
+
+  while (!isAtEnd(jp)) {
+    JsonResult result = jp_parseJsonValue(jp);
+    if (jp->had_error) { break; }
+
+    if (count >= capacity) {
+      capacity *= 2;
+      temp = realloc(temp, sizeof(JsonValue*) * capacity);
+    }
+
+    temp[count++] = result.root;
+
+    jp_consumeWhitespace(jp);
+    if (peek(jp) == ',') {
+      advanceAndConsumeWhitespace(jp);
+      continue;
+    }
+    if (peek(jp) == ']') {
+      advance(jp);
+      break;
+    }
+  }
+  
+  if (jp->had_error) {
+    return (JsonArray){ 0 };
+  }
+
+  array.count = count;
+  array.items = allocator_alloc(jp->config->allocator, count * sizeof(JsonValue*), alignof(JsonValue*));
+  memcpy(array.items, temp, count * sizeof(JsonValue*));
+  free(temp);
+
+  return array;
+
 }
 
 // Parse a JsonNumber and leave jp->at pointing at the first character after the last digit
@@ -179,7 +343,8 @@ StringView jp_parseJsonString(JsonParser* jp)
 // Possibly not used due to bools being simple to parse directly in jp_parseJsonValue
 bool jp_parseJsonBoolean(JsonParser* jp);
 
-JsonResult jp_parseJsonValue(JsonParser* jp) {
+JsonResult jp_parseJsonValue(JsonParser* jp)
+{
   JsonValue value = { 0 };
   jp_consumeWhitespace(jp);
   switch (peek(jp)) {
@@ -258,20 +423,23 @@ JsonResult jp_parseJsonValue(JsonParser* jp) {
   return (JsonResult){.root = result, .error = {.code = JSON_OK}};
 }
 
-JsonResult jp_parseFile(JsonParserConfig* jpc, StringView file) {
+JsonResult jp_parseFile(JsonParserConfig* jpc, StringView file)
+{
   JsonParser jp = jp_parserInit(jpc, file);
   JsonResult root_node = jp_parseJsonValue(&jp);
   if (root_node.root == NULL || jp.had_error == true) {
-    // Handle JsonError
+    // Handle error
+    fprintf(stderr, "There was an error.\n");
   }
   return root_node;
 }
 
-void pretend_main() {
+void pretend_main(const char* file_name) {
   Allocator* arena = arena_list_allocator_create(10 * 1024 * 1024);
   // Allocator* intern = arena_list_allocator_create(10 * 1024);
 
-  String file_contents = string_readFile("tests/test14.json");
+  // String file_contents = string_readFile("tests/test10.json");
+  String file_contents = string_readFile(file_name);
   JsonParserConfig jpc = jp_parserConfigInit(arena, NULL, true);
   [[maybe_unused]] JsonResult root = jp_parseFile(&jpc, sv_fromString(&file_contents));
 
