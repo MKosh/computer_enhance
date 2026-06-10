@@ -111,14 +111,16 @@ static void arena_list_destroy(Allocator* a)
 
   ArenaListAllocator* arena = (ArenaListAllocator*)a;
 
-  while (arena->current->prev != NULL) {
+  // If we try to destroy an arena before actually allocating anything there's
+  // a SEGV, so check that arena->current != NULL before trying to check prev
+  while (arena->current && arena->current->prev != NULL) {
     ArenaBlock* temp = arena->current;
     arena->current = temp->prev;
     free(temp);
   }
 
-  free(arena->current);
-  free(arena);
+  if (arena->current) free(arena->current);
+  if (arena) free(arena);
 }
 
 static void* arena_list_realloc([[maybe_unused]] Allocator* a, [[maybe_unused]] void* ptr, [[maybe_unused]] usize old_size, [[maybe_unused]] usize new_size, [[maybe_unused]] usize align)

@@ -82,6 +82,7 @@ struct JsonParser {
   JsonParserConfig* config;
   StringView source;
   usize at;
+  u64 line;
   bool had_error;
   JsonError error;
 };
@@ -97,6 +98,19 @@ struct JsonParserConfig {
   bool allow_comments;
 };
 
+#define IS_NULL(value)   ((value)->type == JSON_NULL)
+#define IS_BOOL(value)   ((value)->type == JSON_BOOL)
+#define IS_NUMBER(value) ((value)->type == JSON_NUMBER)
+#define IS_STRING(value) ((value)->type == JSON_STRING)
+#define IS_ARRAY(value)  ((value)->type == JSON_ARRAY)
+#define IS_OBJECT(value) ((value)->type == JSON_OBJECT)
+
+#define AS_BOOL(value)   ((value)->as.boolean)
+#define AS_NUMBER(value) ((value)->as.number)
+#define AS_STRING(value) ((value)->as.string)
+#define AS_ARRAY(value)  ((value)->as.array)
+#define AS_OBJECT(value) ((value)->as.object)
+
 bool isAtEnd(JsonParser* jp);
 void pretend_main(const char* file_name);
 char peekNext(JsonParser* jp);
@@ -108,7 +122,8 @@ char peekAndAdvance(JsonParser* jp);
 void advanceBy(JsonParser* jp, size_t n);
 bool isDigit(char c);
 bool isAlpha(char c);
-void jp_consumeWhitespace(JsonParser* jp);
+void consumeWhitespace(JsonParser* jp);
+
 JsonParserConfig jp_parserConfigInit(Allocator* allocator, Allocator* intern, bool allow_comments);
 JsonParser jp_parserInit(JsonParserConfig* jpc, StringView source);
 JsonObject jp_parseJsonObject([[maybe_unused]] JsonParser* jp);
@@ -119,3 +134,8 @@ bool jp_parseJsonBoolean(JsonParser* jp);
 JsonResult jp_parseJsonValue(JsonParser* jp);
 JsonResult jp_parseFile(JsonParserConfig* jpc, StringView file);
 
+JsonValue* jp_arrayAt(const JsonValue* array, usize index);
+usize jp_arrayLengh(const JsonValue* array);
+
+usize jp_objectCount(const JsonValue* object);
+JsonValue* jp_objectGet(const JsonValue* object, StringView key);

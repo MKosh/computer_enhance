@@ -105,3 +105,8 @@ StringView sv_fromString(const String* string)
 {
   return (StringView){.len = string->len, .str = string->str};
 }
+
+StringView sv_fromLiteral(const char* string)
+{
+  return (StringView){ .len = strlen(string)-1, .str = string };
+}
