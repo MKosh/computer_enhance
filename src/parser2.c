@@ -143,7 +143,7 @@ JsonValue* jp_arrayAt(const JsonValue* array, usize index)
 }
 
 // Get the number of values in the JSON array
-usize jp_arrayLengh(const JsonValue* array)
+usize jp_arrayLength(const JsonValue* array)
 {
   assert(array && "nullptr as array");
   if (!IS_ARRAY(array)) {
@@ -306,7 +306,7 @@ JsonObject jp_parseJsonObject([[maybe_unused]] JsonParser* jp)
 }
 
 // Parse a JsonArray and leave jp->at pointing at the first character after the closing ']'
-JsonArray jp_parseJsonArray([[maybe_unused]] JsonParser* jp)
+JsonArray jp_parseJsonArray(JsonParser* jp)
 {
   JsonArray array = { 0 };
   usize count = 0;
@@ -539,29 +539,33 @@ void pretend_main(const char* file_name) {
     [[maybe_unused]] JsonResult root = jp_parseFile(&jpc, sv_fromString(&file_contents));
   ProfileBlockEnd(parse);
 
-  if (IS_OBJECT(root.root)) { printf("It's an object!\n"); }
-  else { printf("It's NOT an object!\n"); }
+  ProfileBlock(Sum, "Sum");
+    JsonValue* pairs = jp_objectGet(root.root, sv_fromLiteral("pairs"));
+    usize elements = jp_arrayLength(pairs);
+    printf("%ld sets of pairs.\n", elements);
 
+    f64 sum = 0.;
+    f64 N   = 0.;
+    f64 run = 0.;
+    for (usize i = 0; i < elements; ++i) {
+      JsonValue* elem = jp_arrayAt(pairs, i);
+      f64 x0 = AS_NUMBER(jp_objectGet(elem, (StringView){ .len = 2, .str = "x0"}));
+      f64 y0 = AS_NUMBER(jp_objectGet(elem, (StringView){ .len = 2, .str = "y0"}));
+      f64 x1 = AS_NUMBER(jp_objectGet(elem, (StringView){ .len = 2, .str = "x1"}));
+      f64 y1 = AS_NUMBER(jp_objectGet(elem, (StringView){ .len = 2, .str = "y1"}));
+      run = referenceHaversine(x0, y0, x1, y1);
+      sum += run;
+      N++;
+      // printf("Pairs: (%g, %g), (%g, %g) -> %g\n", x0, y0, x1, y1, run);
+    }
 
-  //////////////////////////////////////////////////////////////////////////////
-  // Test reading pairs
-  JsonValue* pairs = jp_objectGet(root.root, sv_fromLiteral("pairs"));
-  printf("%ld sets of pairs.\n", jp_arrayLengh(pairs));
-  JsonValue* elem = jp_arrayAt(pairs, 0);
-  if (IS_ARRAY(elem)) { printf("It is an array!\n"); }
-  else if (IS_OBJECT(elem)) { printf("It is an object!\n"); }
-  else { printf("It is something else!\n"); }
-  if (!elem) { printf("elem is null?\n"); }
-
-  JsonValue* x0 = jp_objectGet(elem, sv_fromLiteral("x0"));
-  printf("pairs[0].x0 : %f\n", AS_NUMBER(x0));
-  // Test reading pairs
-  //////////////////////////////////////////////////////////////////////////////
+    printf("Haversine distance = %g/%g = %g\n", sum, N, sum/N);
+  ProfileBlockEnd(Sum);
 
   ProfileBlock(dealloc, "Deallocation");
-  allocator_destroy(arena);
-  // allocator_destroy(intern);
-  string_free(file_contents);
+    allocator_destroy(arena);
+    // allocator_destroy(intern);
+    string_free(file_contents);
   ProfileBlockEnd(dealloc);
 
   profilerEndAndPrint(&prof);

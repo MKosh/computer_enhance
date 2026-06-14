@@ -135,7 +135,7 @@ JsonResult jp_parseJsonValue(JsonParser* jp);
 JsonResult jp_parseFile(JsonParserConfig* jpc, StringView file);
 
 JsonValue* jp_arrayAt(const JsonValue* array, usize index);
-usize jp_arrayLengh(const JsonValue* array);
+usize jp_arrayLength(const JsonValue* array);
 
 usize jp_objectCount(const JsonValue* object);
 JsonValue* jp_objectGet(const JsonValue* object, StringView key);

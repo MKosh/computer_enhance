@@ -120,7 +120,8 @@ void profilerEndAndPrint(Profiler* prof)
   u64 total_elapsed = prof->stop - prof->start;
 
   if (cpu_freq) {
-    printf("\nTotal time: %0.4fms (CPU freq: %gGHz)\n", 1000.0 * ((f64)total_elapsed / (f64)cpu_freq), (f64)cpu_freq/1000000000.);
+    f64 seconds = ((f64)total_elapsed / (f64)cpu_freq); 
+    printf("\nTotal time: %0.4fms = %0.4fs (CPU freq: %gGHz)\n", 1000.0 * seconds, seconds, (f64)cpu_freq/1000000000.);
   }
 
   for (u32 index = 0; index < 4096; ++index) {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <math.h>
+#include <stdio.h>
 
 #include "types.h"
 
@@ -22,8 +23,10 @@ static inline f64 referenceHaversine(f64 x0, f64 y0, f64 x1, f64 y1)
   f64 d_lat = radiansFromDegrees(y1 - y0);
   f64 d_lon = radiansFromDegrees(x1 - x0);
   
+  // printf(" +++ lat1: %g, lat2: %g, d_lat: %g, d_lon: %g\n", lat1, lat2, d_lat, d_lon);
   f64 a = pow(sin(d_lat/2.0), 2.0) + cos(lat1) * cos(lat2) * pow(sin(d_lon/2.0), 2.0);
   f64 c = 2.0 * asin(sqrt(a));
+  // printf(" +++ a: %g, c = %g\n", a, c);
   return radius * c;
 }
 
