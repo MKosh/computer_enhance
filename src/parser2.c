@@ -341,6 +341,7 @@ JsonArray jp_parseJsonArray(JsonParser* jp)
     }
     if (peek(jp) == ',') {
       advanceAndConsumeWhitespace(jp);
+      // count++;
       continue;
     } else {
       fprintf(stderr, "Error expected ',' around line %ld\n", jp->line);
@@ -554,6 +555,7 @@ void pretend_main(const char* file_name) {
       f64 x1 = AS_NUMBER(jp_objectGet(elem, (StringView){ .len = 2, .str = "x1"}));
       f64 y1 = AS_NUMBER(jp_objectGet(elem, (StringView){ .len = 2, .str = "y1"}));
       run = referenceHaversine(x0, y0, x1, y1);
+      // printf("Run %ld: %f\n", i, run);
       sum += run;
       N++;
       // printf("Pairs: (%g, %g), (%g, %g) -> %g\n", x0, y0, x1, y1, run);

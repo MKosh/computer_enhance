@@ -4,7 +4,7 @@ const rnd = std.Random;
 const fs = std.fs;
 const print = std.debug.print;
 
-const radius_km = 6372.8;
+// const radius_km = 6372.8;
 const Range = struct {
     x0: f64,
     x1: f64,
@@ -38,7 +38,9 @@ pub fn main(init: std.process.Init) !void {
     var sum_writer = sum_file.writer(init.io, &buf);
 
     // RNG not randomly seeded!
-    var prng = std.Random.DefaultPrng.init(0);
+    // var prng = std.Random.DefaultPrng.init(0);
+    const rnd_src: std.Random.IoSource = .{ .io = init.io };
+    const rand = &rnd_src.interface();
 
     var x0: f64 = undefined;
     var y0: f64 = undefined;
@@ -53,10 +55,11 @@ pub fn main(init: std.process.Init) !void {
     var ranges: [n_ranges]Range = undefined;
 
     for (&ranges) |*range| {
-        range.x0 = (prng.random().float(f64) * 360.0) - 180.0;
-        range.y0 = (prng.random().float(f64) * 360.0) - 180.0;
-        range.x1 = (prng.random().float(f64) * 360.0) - 180.0;
-        range.y1 = (prng.random().float(f64) * 360.0) - 180.0;
+        // range.x0 = (prng.random().float(f64) * 360.0) - 180.0;
+        range.x0 = (rand.float(f64) * 360.0) - 180.0;
+        range.y0 = (rand.float(f64) * 360.0) - 180.0;
+        range.x1 = (rand.float(f64) * 360.0) - 180.0;
+        range.y1 = (rand.float(f64) * 360.0) - 180.0;
     }
 
     try out.print("{{ \"pairs\":[\n", .{});
@@ -67,33 +70,38 @@ pub fn main(init: std.process.Init) !void {
     var y_max: f64 = undefined;
     var y_min: f64 = undefined;
 
-    for (0..N) |_| {
-        range = prng.random().intRangeLessThan(usize, 0, 64);
+    for (0..N) |i| {
+        range = rand.intRangeLessThan(usize, 0, 64);
         x_max = @max(ranges[range].x0, ranges[range].x1);
         x_min = @min(ranges[range].x0, ranges[range].x1);
         y_max = @max(ranges[range].y0, ranges[range].y1);
         y_min = @min(ranges[range].y0, ranges[range].y1);
-        x0 = x_min + prng.random().float(f64) * (x_max - x_min);
-        x1 = x_min + prng.random().float(f64) * (x_max - x_min);
-        y0 = y_min + prng.random().float(f64) * (y_max - y_min);
-        y1 = y_min + prng.random().float(f64) * (y_max - y_min);
+        x0 = x_min + rand.float(f64) * (x_max - x_min);
+        x1 = x_min + rand.float(f64) * (x_max - x_min);
+        y0 = y_min + rand.float(f64) * (y_max - y_min);
+        y1 = y_min + rand.float(f64) * (y_max - y_min);
 
-        run = referenceHaversine(x0, y0, x1, y1, radius_km);
+        run = referenceHaversine(x0, y0, x1, y1, 6372.8);
+        // try sum_writer.interface.print("Run {}: {}\n", .{i, run});
         sum += run;
-        try out.print("    {{\"x0\":{d}, \"y0\":{d}, \"x1\":{d}, \"y1\":{d}}},\n", .{ x0, y0, x1, y1 });
+        if (i == N-1) {
+            try out.print("    {{\"x0\":{d}, \"y0\":{d}, \"x1\":{d}, \"y1\":{d}}}\n", .{ x0, y0, x1, y1 });
+        } else {
+            try out.print("    {{\"x0\":{d}, \"y0\":{d}, \"x1\":{d}, \"y1\":{d}}},\n", .{ x0, y0, x1, y1 });
+        }
     }
 
-    x0 = (prng.random().float(f64) * 360.0) - 180.0;
-    y0 = (prng.random().float(f64) * 360.0) - 180.0;
-    x1 = (prng.random().float(f64) * 360.0) - 180.0;
-    y1 = (prng.random().float(f64) * 360.0) - 180.0;
-    run = referenceHaversine(x0, y0, x1, y1, 6372.8);
-    sum += run;
+    // x0 = (rand.float(f64) * 360.0) - 180.0;
+    // y0 = (rand.float(f64) * 360.0) - 180.0;
+    // x1 = (rand.float(f64) * 360.0) - 180.0;
+    // y1 = (rand.float(f64) * 360.0) - 180.0;
+    // run = referenceHaversine(x0, y0, x1, y1, 6372.8);
+    // sum += run;
     avg = sum / @as(f64, @floatFromInt(N));
 
     print("{d}\n", .{avg});
     try sum_writer.interface.print("{d}\n", .{avg});
-    try out.print("    {{\"x0\":{d}, \"y0\":{d}, \"x1\":{d}, \"y1\":{d}}}\n", .{ x0, y0, x1, y1 });
+    // try out.print("    {{\"x0\":{d}, \"y0\":{d}, \"x1\":{d}, \"y1\":{d}}}\n", .{ x0, y0, x1, y1 });
     try out.print("  ]\n}}", .{});
 
     try sum_writer.interface.flush();

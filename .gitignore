@@ -6,6 +6,7 @@ data/data.json
 data/data*.json
 data/data*.txt
 src/test.c
+src/generate_data
 callgrind.out.*
 cachegrind.out.*
 vgcore*
