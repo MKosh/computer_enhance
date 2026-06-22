@@ -32,6 +32,9 @@ struct StringView {
   const char* str; ///< Pointer to the start of the string
 };
 
+extern const StringView NULL_SV;
+#define SV_IS_NULL(sv_ptr) ((sv_ptr) == &NULL_SV)
+
 bool   sv_equal(StringView a, StringView b);
 i32    sv_compare(StringView a, StringView b);
 void   sv_print(String string);

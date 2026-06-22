@@ -16,18 +16,11 @@ typedef enum {
 typedef struct JsonValue JsonValue;
 typedef struct JsonArray JsonArray;
 typedef struct JsonObject JsonObject;
-typedef struct JsonFieldNode JsonFieldNode;
 typedef struct JsonField JsonField;
-typedef struct JsonValueNode JsonValueNode;
 
 struct JsonField {
     StringView key;
     JsonValue *value;
-};
-
-struct JsonFieldNode {
-  JsonField field;
-  JsonFieldNode* next;
 };
 
 struct JsonArray {
@@ -51,11 +44,6 @@ struct JsonValue {
     } as;
 };
 
-struct JsonValueNode {
-  JsonValue value;
-  JsonValueNode* next;
-};
-
 typedef enum {
     JSON_OK,
     JSON_ERROR_UNEXPECTED_TOKEN,
@@ -69,8 +57,7 @@ typedef enum {
 
 typedef struct {
     JsonErrorCode code;
-    size_t        line;
-    size_t        column;
+    u64           line;
     StringView    message;   // points into a static string — no allocation
 } JsonError;
 
@@ -98,6 +85,22 @@ struct JsonParserConfig {
   bool allow_comments;
 };
 
+#define JP_DEFINE_RESULT(Name, T) \
+    typedef struct { \
+        bool ok; \
+        union { \
+            T         value; \
+            JsonError error; \
+        }; \
+    } Name;
+
+JP_DEFINE_RESULT(JsonValueResult, JsonValue);
+JP_DEFINE_RESULT(JsonObjectResult, JsonObject);
+JP_DEFINE_RESULT(JsonArrayResult,  JsonArray);
+JP_DEFINE_RESULT(JsonNumberResult, f64);
+JP_DEFINE_RESULT(JsonStringResult, StringView);
+JP_DEFINE_RESULT(JsonBoolResult,   bool);
+
 #define IS_NULL(value)   ((value)->type == JSON_NULL)
 #define IS_BOOL(value)   ((value)->type == JSON_BOOL)
 #define IS_NUMBER(value) ((value)->type == JSON_NUMBER)
@@ -111,31 +114,26 @@ struct JsonParserConfig {
 #define AS_ARRAY(value)  ((value)->as.array)
 #define AS_OBJECT(value) ((value)->as.object)
 
-bool isAtEnd(JsonParser* jp);
-void pretend_main(const char* file_name);
-char peekNext(JsonParser* jp);
-char peek(JsonParser* jp);
-void advance(JsonParser* jp);
-void advanceAndConsumeWhitespace(JsonParser* jp);
-char advanceAndPeek(JsonParser* jp);
-char peekAndAdvance(JsonParser* jp);
-void advanceBy(JsonParser* jp, size_t n);
-bool isDigit(char c);
-bool isAlpha(char c);
-void consumeWhitespace(JsonParser* jp);
-
 JsonParserConfig jp_parserConfigInit(Allocator* allocator, Allocator* intern, bool allow_comments);
 JsonParser jp_parserInit(JsonParserConfig* jpc, StringView source);
-JsonObject jp_parseJsonObject([[maybe_unused]] JsonParser* jp);
-JsonArray jp_parseJsonArray([[maybe_unused]] JsonParser* jp);
-f64 jp_parseJsonNumber(JsonParser* jp);
+JsonObject jp_parseJsonObject(JsonParser* jp);
+JsonArray  jp_parseJsonArray(JsonParser* jp);
 StringView jp_parseJsonString(JsonParser* jp);
-bool jp_parseJsonBoolean(JsonParser* jp);
-JsonResult jp_parseJsonValue(JsonParser* jp);
+JsonValueResult jp_parseJsonValue(JsonParser* jp);
 JsonResult jp_parseFile(JsonParserConfig* jpc, StringView file);
+bool jp_parseJsonBoolean(JsonParser* jp);
+JsonNumberResult  jp_parseJsonNumber(JsonParser* jp);
 
 JsonValue* jp_arrayAt(const JsonValue* array, usize index);
 usize jp_arrayLength(const JsonValue* array);
 
 usize jp_objectCount(const JsonValue* object);
 JsonValue* jp_objectGet(const JsonValue* object, StringView key);
+
+JsonError jp_makeError(JsonParser* jp, JsonErrorCode code, const char* detail);
+
+
+// #define JP_TRY(result_expr, ResultType) \
+//   ({ typeof(result_expr) _r = (result_expr); \
+//      if (!_r.ok) return (ResultType){ .ok = false, .error = _r.error }; \
+//      _r.value; })

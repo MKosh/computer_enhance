@@ -4,6 +4,8 @@
 #include "types.h"
 #include "string8.h"
 
+const StringView NULL_SV = { .len = 0, .str = NULL };
+
 ////////////////////////////////////////////////////////////////////////////////
 /// \brief read a file into a normal C buffer
 char* readFile(const char* filename, u64* size)
