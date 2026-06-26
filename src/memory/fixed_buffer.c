@@ -64,16 +64,26 @@ static void fixed_buffer_reset(Allocator* a)
 
 static void fixed_buffer_destroy([[maybe_unused]] Allocator* a)
 {
-  fprintf(stderr, "Fixed buffer doesn't own it's memory.\n");
+    assert(a && "Nullptr.");
+    FixedBufferAllocator* buffer = (FixedBufferAllocator*)a;
+    buffer->buffer = NULL;
+    buffer->buffer_size = 0;
+    buffer->pos = 0;
+    free(a);
+  // fprintf(stderr, "Fixed buffer doesn't own it's memory.\n");
 }
 
 static void* fixed_buffer_realloc(Allocator* a, [[maybe_unused]] void* ptr, [[maybe_unused]] usize old_size, [[maybe_unused]] usize new_size, [[maybe_unused]] usize align)
 {
+  fprintf(stderr, "Error: Function 'realloc' currently not supported for FixedBuffer allocators.\n");
+  exit(1);
   [[maybe_unused]] FixedBufferAllocator* buffer = (FixedBufferAllocator*)a;
   return NULL;
 }
 
 static void fixed_buffer_free(Allocator* a, [[maybe_unused]] void* ptr, [[maybe_unused]] usize size, [[maybe_unused]] usize align)
 {
+  fprintf(stderr, "Error: Function 'free' currently not supported for FixedBuffer allocators.\n");
+  exit(1);
   [[maybe_unused]] FixedBufferAllocator* buffer = (FixedBufferAllocator*)a;
 }

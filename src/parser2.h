@@ -116,13 +116,13 @@ JP_DEFINE_RESULT(JsonBoolResult,   bool);
 
 JsonParserConfig jp_parserConfigInit(Allocator* allocator, Allocator* intern, bool allow_comments);
 JsonParser jp_parserInit(JsonParserConfig* jpc, StringView source);
-JsonObject jp_parseJsonObject(JsonParser* jp);
-JsonArray  jp_parseJsonArray(JsonParser* jp);
-StringView jp_parseJsonString(JsonParser* jp);
+JsonValueResult jp_parseJsonObject(JsonParser* jp);
+JsonValueResult  jp_parseJsonArray(JsonParser* jp);
+JsonValueResult jp_parseJsonString(JsonParser* jp);
 JsonValueResult jp_parseJsonValue(JsonParser* jp);
-JsonResult jp_parseFile(JsonParserConfig* jpc, StringView file);
-bool jp_parseJsonBoolean(JsonParser* jp);
-JsonNumberResult  jp_parseJsonNumber(JsonParser* jp);
+JsonValueResult jp_parseFile(JsonParserConfig* jpc, StringView file);
+JsonValueResult jp_parseJsonBoolean(JsonParser* jp);
+JsonValueResult  jp_parseJsonNumber(JsonParser* jp);
 
 JsonValue* jp_arrayAt(const JsonValue* array, usize index);
 usize jp_arrayLength(const JsonValue* array);
@@ -132,6 +132,7 @@ JsonValue* jp_objectGet(const JsonValue* object, StringView key);
 
 JsonError jp_makeError(JsonParser* jp, JsonErrorCode code, const char* detail);
 
+[[maybe_unused]] void pretend_main(const char* file_name);
 
 // #define JP_TRY(result_expr, ResultType) \
 //   ({ typeof(result_expr) _r = (result_expr); \

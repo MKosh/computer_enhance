@@ -78,20 +78,22 @@ target_link_directories(haversine2 PUBLIC
 target_compile_definitions(haversine2 PUBLIC
   "$<$<CONFIG:DEBUG>:DEBUG>"
 )
-
+# add_compile_options(
+#   "-Wall" "-Wpedantic" "-Wextra" "-fexceptions"
+#   "$<$<CONFIG:DEBUG>:-O0;-g3;-ggdb>"
+# )
 target_compile_options(haversine2 PRIVATE
-  -fsanitize=address,leak
-  -static-libsan
-  -fno-omit-frame-pointer
+    "$<$<CONFIG:DEBUG>:-fsanitize=address,leak;-static-libsan;-fno-omit-frame-pointer>"
   -Wall
   -Wextra
   -Werror
 )
 
 target_link_options(haversine2 PRIVATE
-  -fsanitize=address,leak
-  -static-libsan
-  -fno-omit-frame-pointer
+    "$<$<CONFIG:DEBUG>:-fsanitize=address,leak;-static-libsan;-fno-omit-frame-pointer>"
+  # -fsanitize=address,leak
+  # -static-libsan
+  # -fno-omit-frame-pointer
   -lm
 )
 
