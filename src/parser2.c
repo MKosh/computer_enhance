@@ -282,7 +282,10 @@ JsonValueResult jp_parseJsonObject(JsonParser* jp)
 
     // TODO: Test both with and without a local arena allocator for building the
     // JsonFieldNode linked list:
-    // u8 buf[4096];
+    u8 buf[4096];
+    FixedBufferAllocator fba;
+    fixed_buffer_allocator_init(&fba, buf, 4096);
+    Allocator* allocator = &fba.base;
     // Allocator* buffer = fixed_buffer_allocator_create(buf, 4096);
 
     while (!isAtEnd(jp)) {
@@ -322,8 +325,9 @@ JsonValueResult jp_parseJsonObject(JsonParser* jp)
         }
 
         // Store the field in a new node
-        JsonFieldNode* node = allocator_new(jp->config->allocator, JsonFieldNode);
-        // JsonFieldNode* node = allocator_new(buffer, JsonFieldNode);
+        // JsonFieldNode* node = allocator_new(jp->config->intern_allocator, JsonFieldNode);
+        // JsonFieldNode* node = allocator_new(jp->config->allocator, JsonFieldNode);
+        JsonFieldNode* node = allocator_new(allocator, JsonFieldNode);
         node->field.key = key.value.as.string;
         node->field.value = allocator_new(jp->config->allocator, JsonValue);
         *node->field.value = value.value;
@@ -361,6 +365,7 @@ JsonValueResult jp_parseJsonObject(JsonParser* jp)
         result.value.as.object = obj;
     }
 
+    // allocator_reset(jp->config->intern_allocator);
     // allocator_destroy(buffer);
     return result;
 }
@@ -696,13 +701,15 @@ JsonValueResult jp_parseFile(JsonParserConfig* jpc, StringView file)
     profilerInit(&prof);
     profilerBegin(&prof);
     Allocator* arena = arena_list_allocator_create(10 * 1024 * 1024);
+    u8* buffer = malloc(10 * 1024);
+    Allocator* buf   = fixed_buffer_allocator_create(buffer, 10*1024);
     // Allocator* intern = arena_list_allocator_create(10 * 1024);
 
     ProfileBlock(read, "Read input");
     String file_contents = string_readFile(file_name);
     ProfileBlockEnd(read);
 
-    JsonParserConfig jpc = jp_parserConfigInit(arena, NULL, true);
+    JsonParserConfig jpc = jp_parserConfigInit(arena, buf, true);
     ProfileBlock(parse, "Parse file");
     [[maybe_unused]] JsonValueResult root = jp_parseFile(&jpc, sv_fromString(&file_contents));
     if (root.ok == false) {

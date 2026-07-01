@@ -8,12 +8,14 @@
 #include <stddef.h>
 #include <stdio.h>
 
-typedef struct FixedBufferAllocator {
-  Allocator base;
-  usize buffer_size;
-  u8* pos;
-  u8* buffer;
-} FixedBufferAllocator;
+// struct FixedBufferAllocator {
+//   Allocator base;
+//   usize buffer_size;
+//   bool owns_buffer;
+//   bool owns_self;
+//   u8* pos;
+//   u8* buffer;
+// };
 
 static void* fixed_buffer_alloc(Allocator* a, usize size, usize align);
 static void  fixed_buffer_reset(Allocator* a);
@@ -29,14 +31,31 @@ static const AllocatorVTable fixed_buffer_vtable = {
   .free    = fixed_buffer_free
 };
 
+void fixed_buffer_allocator_init(FixedBufferAllocator* a, u8* buffer, usize buffer_size)
+{
+    a->base.vtable = &fixed_buffer_vtable;
+    a->buffer_size = buffer_size;
+    a->buffer = buffer;
+    a->pos = buffer;
+    a->owns_buffer = false;
+    a->owns_self = false;
+}
+
 Allocator* fixed_buffer_allocator_create(u8* buffer, usize buffer_size)
 {
-  FixedBufferAllocator* a = malloc(sizeof(FixedBufferAllocator));
-  a->base.vtable = &fixed_buffer_vtable;
-  a->buffer_size = buffer_size;
-  a->buffer = buffer;
-  a->pos = buffer;
-  return &a->base; // Upcast safe due to layout guarantee
+    FixedBufferAllocator* a = malloc(sizeof(FixedBufferAllocator));
+    if (a == NULL) { return NULL; }
+
+    if (buffer) {
+        fixed_buffer_allocator_init(a, buffer, buffer_size);
+    } else {
+        u8* owned = malloc(buffer_size);
+        if (owned == NULL) { free(a); return NULL; }
+        fixed_buffer_allocator_init(a, owned, buffer_size);
+        a->owns_buffer = true;
+    }
+    a->owns_self = true;
+    return &a->base; // Upcast safe due to layout guarantee
 }
 
 static void* fixed_buffer_alloc(Allocator* a, usize size, usize align) {
@@ -64,12 +83,19 @@ static void fixed_buffer_reset(Allocator* a)
 
 static void fixed_buffer_destroy([[maybe_unused]] Allocator* a)
 {
-    assert(a && "Nullptr.");
-    FixedBufferAllocator* buffer = (FixedBufferAllocator*)a;
-    buffer->buffer = NULL;
-    buffer->buffer_size = 0;
-    buffer->pos = 0;
-    free(a);
+    FixedBufferAllocator* fba = (FixedBufferAllocator*)a;
+    if (fba->owns_buffer) {
+        free(fba->buffer);
+    }
+    if (fba->owns_self) {
+        free(fba);
+    }
+    // assert(a && "Nullptr.");
+    // FixedBufferAllocator* buffer = (FixedBufferAllocator*)a;
+    // buffer->buffer = NULL;
+    // buffer->buffer_size = 0;
+    // buffer->pos = 0;
+    // free(a);
   // fprintf(stderr, "Fixed buffer doesn't own it's memory.\n");
 }
 
@@ -83,7 +109,7 @@ static void* fixed_buffer_realloc(Allocator* a, [[maybe_unused]] void* ptr, [[ma
 
 static void fixed_buffer_free(Allocator* a, [[maybe_unused]] void* ptr, [[maybe_unused]] usize size, [[maybe_unused]] usize align)
 {
-  fprintf(stderr, "Error: Function 'free' currently not supported for FixedBuffer allocators.\n");
-  exit(1);
+  // fprintf(stderr, "Error: Function 'free' currently not supported for FixedBuffer allocators.\n");
+  // exit(1);
   [[maybe_unused]] FixedBufferAllocator* buffer = (FixedBufferAllocator*)a;
 }
