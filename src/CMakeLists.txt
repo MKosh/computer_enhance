@@ -75,26 +75,44 @@ target_link_directories(haversine2 PUBLIC
   ${CMAKE_SOURCE_DIR}/src/memory
 )
 
-target_compile_definitions(haversine2 PUBLIC
-  "$<$<CONFIG:DEBUG>:DEBUG>"
-)
-# add_compile_options(
-#   "-Wall" "-Wpedantic" "-Wextra" "-fexceptions"
-#   "$<$<CONFIG:DEBUG>:-O0;-g3;-ggdb>"
-# )
+####  Debug info flags ####
+# Debug and RelWithDebInfo get debug symbols; Release does not.
 target_compile_options(haversine2 PRIVATE
-    "$<$<CONFIG:DEBUG>:-fsanitize=address,leak;-static-libsan;-fno-omit-frame-pointer>"
-  -Wall
-  -Wextra
-  -Werror
+  $<$<OR:$<CONFIG:Debug>,$<CONFIG:RelWithDebInfo>>:-g -Wall -Wextra -Werror>
+)
+
+#### Optimization flags ###
+# Release: full optimization, no debug info.
+# RelWithDebInfo: still optimized (lightly, per CMake convention) but with debug info.
+# Debug: no optimization.
+target_compile_options(haversine2 PRIVATE
+    $<$<CONFIG:Debug>:-O0>
+    $<$<CONFIG:RelWithDebInfo>:-O2>
+    $<$<CONFIG:Release>:-O3>
+)
+
+#### Link math library ###
+target_link_options(haversine2 PRIVATE
+    $<$<CONFIG:Debug>:-lm>
+    $<$<CONFIG:RelWithDebInfo>:-lm>
+    $<$<CONFIG:Release>:-lm>
+)
+
+#### AddressSanitizer: Debug only ###
+target_compile_options(haversine2 PRIVATE
+    $<$<CONFIG:Debug>:-fsanitize=address -static-libasan -fno-omit-frame-pointer>
 )
 
 target_link_options(haversine2 PRIVATE
-    "$<$<CONFIG:DEBUG>:-fsanitize=address,leak;-static-libsan;-fno-omit-frame-pointer>"
-  # -fsanitize=address,leak
-  # -static-libsan
-  # -fno-omit-frame-pointer
-  -lm
+    $<$<CONFIG:Debug>:-fsanitize=address -static-libasan>
+)
+
+#### NDEBUG handling ###
+# Release and RelWithDebInfo typically define NDEBUG to strip asserts;
+# Debug should NOT define it.
+target_compile_definitions(haversine2 PRIVATE
+    $<$<CONFIG:Release>:NDEBUG>
+    $<$<CONFIG:RelWithDebInfo>:NDEBUG>
 )
 
 ################################################################################
