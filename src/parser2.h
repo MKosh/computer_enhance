@@ -85,21 +85,29 @@ struct JsonParserConfig {
   bool allow_comments;
 };
 
-#define JP_DEFINE_RESULT(Name, T) \
-    typedef struct { \
-        bool ok; \
-        union { \
-            T         value; \
-            JsonError error; \
-        }; \
-    } Name;
+typedef struct JsonValueResult {
+  bool ok;
+  union {
+    JsonValue value;
+    JsonError error;
+  };
+} JsonValueResult;
 
-JP_DEFINE_RESULT(JsonValueResult, JsonValue);
-JP_DEFINE_RESULT(JsonObjectResult, JsonObject);
-JP_DEFINE_RESULT(JsonArrayResult,  JsonArray);
-JP_DEFINE_RESULT(JsonNumberResult, f64);
-JP_DEFINE_RESULT(JsonStringResult, StringView);
-JP_DEFINE_RESULT(JsonBoolResult,   bool);
+// #define JP_DEFINE_RESULT(Name, T) \
+//     typedef struct { \
+//         bool ok; \
+//         union { \
+//             T         value; \
+//             JsonError error; \
+//         }; \
+//     } Name;
+//
+// JP_DEFINE_RESULT(JsonValueResult, JsonValue);
+// JP_DEFINE_RESULT(JsonObjectResult, JsonObject);
+// JP_DEFINE_RESULT(JsonArrayResult,  JsonArray);
+// JP_DEFINE_RESULT(JsonNumberResult, f64);
+// JP_DEFINE_RESULT(JsonStringResult, StringView);
+// JP_DEFINE_RESULT(JsonBoolResult,   bool);
 
 #define IS_NULL(value)   ((value)->type == JSON_NULL)
 #define IS_BOOL(value)   ((value)->type == JSON_BOOL)

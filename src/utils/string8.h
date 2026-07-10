@@ -37,8 +37,8 @@ extern const StringView NULL_SV;
 
 bool   sv_equal(StringView a, StringView b);
 i32    sv_compare(StringView a, StringView b);
-void   sv_print(String string);
-void   sv_println(String string);
+void   sv_print(FILE* f, StringView sv);
+void   sv_println(FILE* f, StringView sv);
 StringView sv_fromString(const String* string);
 StringView sv_fromLiteral(const char* string);
 

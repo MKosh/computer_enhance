@@ -103,12 +103,42 @@ void string_print(String string)
   printf("%.*s", (int)string.len, string.str);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+///
 StringView sv_fromString(const String* string)
 {
   return (StringView){.len = string->len, .str = string->str};
 }
 
+////////////////////////////////////////////////////////////////////////////////
+///
 StringView sv_fromLiteral(const char* string)
 {
   return (StringView){ .len = strlen(string), .str = string };
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
+bool sv_equal(StringView a, StringView b)
+{
+  if (a.len != b.len) return false;
+  if (memcmp(a.str, b.str, a.len) == 0) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
+void sv_print(FILE* f, StringView sv)
+{
+  fprintf(f, "%.*s", (int)sv.len, sv.str);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
+void sv_println(FILE* f, StringView sv)
+{
+  fprintf(f, "%.*s\n", (int)sv.len, sv.str);
 }

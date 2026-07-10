@@ -120,6 +120,8 @@ target_compile_definitions(haversine2 PRIVATE
 ################################################################################
 add_executable(test
   test.c
+  utils/string8.c
+  utils/set.c
   memory/mem.c
   memory/arena_list.c
   memory/fixed_buffer.c
