@@ -50,6 +50,7 @@ bool svset_keyExistsFromLiteral(StringViewSet* svs, const char* key);
 ////////////////////////////////////////////////////////////////////////////////
 /// Insert
 bool svset_insert(StringViewSet* svs, StringView key);
+StringView svset_intern(StringViewSet* svs, Allocator* allocator, StringView key);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Delete

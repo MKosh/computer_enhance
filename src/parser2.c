@@ -6,6 +6,7 @@
 #include "fixed_buffer.h"
 #include "metrics.h"
 #include "haversine2.h"
+#include "set.h"
 
 #include <math.h>
 
@@ -256,7 +257,7 @@ JsonParserConfig jp_parserConfigInit(Allocator* allocator, Allocator* intern, bo
 /// Initialize the parser itself
 JsonParser jp_parserInit(JsonParserConfig* jpc, StringView source)
 {
-    return (JsonParser){.config = jpc, .source = source, .at = 0, .line = 1, .had_error = false, .error = {.code = JSON_OK}};
+    return (JsonParser){.config = jpc, .source = source, .at = 0, .line = 1, .had_error = false, .intern = svset_create(256, jpc->intern_allocator)};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -303,6 +304,8 @@ JsonValueResult jp_parseJsonObject(JsonParser* jp)
             result = key;
             break;
         }
+
+        [[maybe_unused]] bool is_new_key = svset_insert(jp->intern, key.value.as.string);
 
         // Look for a colon to separate the key and value
         consumeWhitespace(jp);
@@ -701,15 +704,15 @@ JsonValueResult jp_parseFile(JsonParserConfig* jpc, StringView file)
     profilerInit(&prof);
     profilerBegin(&prof);
     Allocator* arena = arena_list_allocator_create(10 * 1024 * 1024);
-    // u8* buffer = malloc(10 * 1024);
-    // Allocator* buf   = fixed_buffer_allocator_create(buffer, 10*1024);
+    u8* buffer = malloc(10 * 1024);
+    Allocator* buf   = fixed_buffer_allocator_create(buffer, 10*1024);
     // Allocator* intern = arena_list_allocator_create(10 * 1024);
 
     ProfileBlock(read, "Read input");
     String file_contents = string_readFile(file_name);
     ProfileBlockEnd(read);
 
-    JsonParserConfig jpc = jp_parserConfigInit(arena, NULL, true);
+    JsonParserConfig jpc = jp_parserConfigInit(arena, buf, true);
     ProfileBlock(parse, "Parse file");
     [[maybe_unused]] JsonValueResult root = jp_parseFile(&jpc, sv_fromString(&file_contents));
     if (root.ok == false) {
@@ -745,7 +748,8 @@ JsonValueResult jp_parseFile(JsonParserConfig* jpc, StringView file)
 
     ProfileBlock(dealloc, "Deallocation");
     allocator_destroy(arena);
-    // allocator_destroy(intern);
+    allocator_destroy(buf);
+    free(buffer);
     string_free(file_contents);
     ProfileBlockEnd(dealloc);
 

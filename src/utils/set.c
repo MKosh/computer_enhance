@@ -177,6 +177,19 @@ bool svset_insert(StringViewSet* svs, StringView key)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+/// Intern - If the string is in the set, return the already existing version,
+///          if it's not in the set add it.
+StringView svset_intern(StringViewSet* svs, Allocator* allocator, StringView key)
+{
+  assert(svs && "Null svs");
+  assert(allocator && "Null allocator");
+  SvSetSlot* slot = svset_search(svs, key);
+  if (slot->key.str == NULL) {
+    slot->key = key;
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////
 /// Delete
 void svset_delete([[maybe_unused]] StringViewSet* svs, [[maybe_unused]] StringView key)
 {
