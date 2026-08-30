@@ -73,7 +73,7 @@ struct JsonParser {
   u64 line;
   bool had_error;
   JsonError error;
-  StringViewSet* intern;
+  Set* intern;
 };
 
 struct JsonResult {
@@ -129,6 +129,7 @@ JsonParser jp_parserInit(JsonParserConfig* jpc, StringView source);
 JsonValueResult jp_parseJsonObject(JsonParser* jp);
 JsonValueResult  jp_parseJsonArray(JsonParser* jp);
 JsonValueResult jp_parseJsonString(JsonParser* jp);
+StringView* jp_parseJsonKey(JsonParser* jp);
 JsonValueResult jp_parseJsonValue(JsonParser* jp);
 JsonValueResult jp_parseFile(JsonParserConfig* jpc, StringView file);
 JsonValueResult jp_parseJsonBoolean(JsonParser* jp);

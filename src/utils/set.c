@@ -1,197 +1,271 @@
-#include "set.h"
 #include "types.h"
+#include "set.h"
 #include "string8.h"
 
-// [[maybe_unused]] static u32 hashStringView(StringView sv);
-// [[maybe_unused]] static u32 hashString(String sv);
-//
-// [[maybe_unused]] static u32 hashStringView(StringView sv) {
-//   u32 hash = 2166136261u;
-//   for (usize i = 0; i < sv.len; i++) {
-//     hash ^= (u8)sv.str[i];
-//     hash *= 16777619;
-//   }
-//   return hash;
-// }
-//
-// [[maybe_unused]] static u32 hashString(String sv) {
-//   u32 hash = 2166136261u;
-//   for (usize i = 0; i < sv.len; i++) {
-//     hash ^= (u8)sv.str[i];
-//     hash *= 16777619;
-//   }
-//   return hash;
-// }
+#include <stdio.h>
+#include <limits.h>
 
-// #define FNV_OFFSET_BASIS 14695981039346656037ULL
-// #define FNV_PRIME        1099511628211ULL
-static const u64 FNV_OFFSET_BASIS = 14695981039346656037ULL;
-static const u64 FNV_PRIME = 1099511628211ULL;
-const SvSetSlot NULL_SVSS = { .hash = 0, .key = { .len = 0, .str = NULL }};
+////////////////////////////////////////////////////////////////////////////////
+///
+struct Set {
+  usize count;                              ///< Number of entries in the set
+  usize capacity;                           ///< Number of buckets/slots
+  i32 (*cmp)(const void* x, const void* y); ///< Function for comparing two entries
+  u64 (*hash)(const void* x);               ///< Function for hashing an entry
+  struct Entry {                            ///< Entry
+    struct Entry* next;                     ///< Link to next entry in the list
+    const void* value;                      ///< Entry's value
+  }** buckets;                              ///< Array of slots for Entries
+};
 
-u64 hashStringView(StringView s)
+////////////////////////////////////////////////////////////////////////////////
+///
+struct SetError {
+  SetStatusCode code;
+  StringView message;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+///
+struct SetCreateResult {
+  bool ok;
+  union {
+    Set* result;
+    SetError error;
+  };
+};
+
+////////////////////////////////////////////////////////////////////////////////
+///
+struct SetResult {
+  bool ok;
+  union {
+    void* value;
+    SetError error;
+  };
+};
+
+////////////////////////////////////////////////////////////////////////////////
+///
+static i32 cmpatom(const void *x, const void *y)
 {
-    u64 hash = FNV_OFFSET_BASIS;
-    for (usize i = 0; i < s.len; i++) {
-        hash ^= (u8)s.str[i];
-        hash *= FNV_PRIME;
-    }
-    return hash == 0 ? 1 : hash;
+  return x != y;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Create
-StringViewSet* svset_create(usize capacity, Allocator* allocator)
+///
+static u64 hashatom(const void *x)
 {
-  StringViewSet* set = allocator_new(allocator, StringViewSet);
+  return (unsigned long)x>>2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
+SetCreateResult* set_create(u32 hint, Allocator* allocator, i32 cmp(const void* x, const void* y), u64 hash(const void* x))
+{
+  SetCreateResult* res = allocator_new(allocator, SetCreateResult); // = { .ok = true };
+  res->ok = true;
+  Set* set = NULL;
+  static u32 primes[] = { 509, 509, 1021, 2053, 4093, 8191, 16381, 32771, 65521, INT_MAX, UINT_MAX };
+
+  u32 i;
+  for (i = 1; primes[i] < hint; i++) {};
+
+  set = allocator_alloc(allocator, sizeof(*set) + primes[i-1] * sizeof(set->buckets[0]), alignof(Set));
+
   if (set == NULL) {
-    return NULL;
+    *res = (SetCreateResult){ .ok = false, .error = (SetError){ .code = SET_STATUS_ALLOCATION_FAIL }};
   }
 
-  set->capacity = capacity;
-  set->count = 0;
-  set->keys = allocator_new_array(allocator, SvSetSlot, capacity);
-
-  if (set->keys == NULL) {
-    return NULL;
-  }
-
-  for (usize i = 0; i < capacity; i++) {
-    set->keys[i] = (SvSetSlot){ 0 };
-  }
-
-  return set;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// Init
-void svset_init(StringViewSet* svs, Allocator* allocator, usize capacity)
-{
-  assert(svs && "Null StringViewSet");
-  svs->capacity = capacity;
-  svs->count = 0;
-  svs->keys = allocator_new_array(allocator, SvSetSlot, capacity);
-  for (usize i = 0; i < capacity; i++) {
-    svs->keys[i] = (SvSetSlot){ 0 };
-  }
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// Destroy
-void svset_destroy([[maybe_unused]] StringViewSet* svs)
-{
-  // No need to free anything, the allocator will do it.
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// Search
-SvSetSlot* svset_search(StringViewSet* svs, StringView key)
-{
-  SvSetSlot* slot;
-  u64 key_hash = hashStringView(key);
-  u64 index = key_hash % svs->capacity;
-
-  for (;;) {
-    slot = &svs->keys[index];
-    if (slot->hash != 0 && slot->hash != key_hash) {
-      index = (index + 1) % svs->capacity;
-      continue;
+  if (res->ok == true) {
+    set->capacity = primes[i-1];
+    set->count = 0;
+    set->buckets = (struct Entry**)(set + 1);
+    set->cmp = cmp ? cmp : cmpatom;
+    set->hash = hash ? hash : hashatom;
+    for (i = 0; i < set->capacity; ++i) {
+      set->buckets[i] = NULL;
     }
-
-    if (slot->key.str == NULL) {
-      slot->hash = key_hash;
-      return slot;
-    }
-
-    if (strncmp(key.str, slot->key.str, key.len) == 0) {
-      return slot;
-    }
-
-    index = (index + 1) % svs->capacity;
+    res->result = set;
   }
 
+  return res;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-StringView svset_get(StringViewSet* svs, StringView key)
+///
+bool set_ok(SetCreateResult* res)
 {
-  SvSetSlot* slot = svset_search(svs, key);
-  if (slot->key.str == NULL) {
-    return NULL_SV;
+  if (res->ok == true) { return true; }
+  else { return false; }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
+Set* set_getSet(SetCreateResult* res)
+{
+  return res->result;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
+SetStatusCode set_tryInsert(Set* set, Allocator* allocator, void* entry)
+{
+  assert(set);
+  assert(allocator);
+  assert(entry);
+
+  SetStatusCode status = SET_STATUS_OK;
+  u64 hash = set->hash(entry);
+  usize bucket = hash % set->capacity;
+  struct Entry* link = NULL;
+
+  for (link = set->buckets[bucket]; link; link = link->next) {
+    // Check if the exact entry is already in the bucket linked list
+    if (set->cmp(entry, link->value) == 0) {
+      status = SET_STATUS_ENTRY_EXISTS;
+      break;
+    }
+  }
+
+  if (link == NULL) {
+    // The entry was not in the list, allocate space for a new one
+    link = allocator_new(allocator, struct Entry);
+    if (link == NULL) {
+      status = SET_STATUS_ALLOCATION_FAIL;
+    } else {
+      link->next = set->buckets[bucket];
+      set->buckets[bucket] = link;
+      link->value = entry;
+    }
+  }
+
+  return status;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
+const void* set_tryIntern(Set* set, Allocator* allocator, void* entry)
+{
+  assert(set);
+  assert(allocator);
+  assert(entry);
+
+  [[maybe_unused]] SetStatusCode status = SET_STATUS_OK;
+  u64 hash = set->hash(entry);
+  usize bucket = hash % set->capacity;
+  struct Entry* link = NULL;
+
+  for (link = set->buckets[bucket]; link; link = link->next) {
+    // Check if the exact entry is already in the bucket linked list
+    if (set->cmp(entry, link->value) == 0) {
+      status = SET_STATUS_ENTRY_EXISTS;
+      break;
+    }
+  }
+
+  if (link == NULL) {
+    // The entry was not in the list, allocate space for a new one
+    link = allocator_new(allocator, struct Entry);
+    if (link == NULL) {
+      status = SET_STATUS_ALLOCATION_FAIL;
+    } else {
+      link->next = set->buckets[bucket];
+      set->buckets[bucket] = link;
+      link->value = entry;
+    }
+  }
+
+  return link ? link->value : NULL;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Check if entry is in the set
+extern bool set_exists(Set* set, void* entry)
+{
+  assert(set);
+  assert(entry);
+
+  bool ret = false;
+
+  u64 hash = set->hash(entry);
+  usize bucket = hash % set->capacity;
+  struct Entry* link = NULL;
+
+  for (link = set->buckets[bucket]; link; link = link->next) {
+    // Check if the exact entry is already in the bucket linked list
+    if (set->cmp(entry, link->value) == 0) {
+      ret = true;
+      break;
+    }
+  }
+
+  return ret;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
+const void* set_get(Set* set, void* entry)
+{
+  assert(set);
+  assert(entry);
+
+  u64 hash = set->hash(entry);
+  usize bucket = hash % set->capacity;
+  struct Entry* link = NULL;
+  const void* value = NULL;
+
+  for (link = set->buckets[bucket]; link; link = link->next) {
+    if (set->cmp(entry, link->value) == 0) {
+      value = link->value;
+    }
+  }
+
+  return value;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
+void set_map(Set* set, void apply(const void* member, void* cl), void* cl)
+{
+  struct Entry* p;
+
+  assert(set);
+  assert(apply);
+  for (usize i = 0; i < set->capacity; i++) {
+    for (p = set->buckets[i]; p; p = p->next) {
+      apply(p->value, cl);
+    }
   }
   
-  return slot->key;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-const char* svset_getChar(StringViewSet* svs, StringView key)
+/// Destroy a set created with set_create
+/// Note: currently not needed, because the allocator manages the memory
+void set_destroy([[maybe_unused]] Set** set, Allocator* allocator)
 {
-  return svset_get(svs, key).str;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-const char* svset_getCharFromString(StringViewSet* svs, StringView key)
-{
-  return svset_get(svs, key).str;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-bool svset_keyExists(StringViewSet* svs, StringView key)
-{
-  SvSetSlot* slot = svset_search(svs, key);
-  bool key_exists = false;
-  if (slot->key.str == NULL) {
-    key_exists = false;
-  } else if (strncmp(key.str, slot->key.str, key.len) == 0) {
-    key_exists = true;
-  }
-  return key_exists;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-bool svset_keyExistsFromLiteral(StringViewSet* svs, const char* key)
-{
-  SvSetSlot* slot = svset_search(svs, sv_fromLiteral(key));
-  bool key_exists = false;
-  if (slot->key.str == NULL) {
-    key_exists = false;
-  } else if (strncmp(key, slot->key.str, slot->key.len) == 0) {
-    key_exists = true;
-  }
-  return key_exists;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// Insert
-bool svset_insert(StringViewSet* svs, StringView key)
-{
-  assert(svs && "Null svs");
-  bool is_new_key = false;
-  SvSetSlot* slot = svset_search(svs, key);
-  if (slot->key.str == NULL) {
-    is_new_key = true;
-    slot->key = key;
-  }
-
-  return is_new_key;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// Intern - If the string is in the set, return the already existing version,
-///          if it's not in the set add it.
-StringView svset_intern(StringViewSet* svs, Allocator* allocator, StringView key)
-{
-  assert(svs && "Null svs");
-  assert(allocator && "Null allocator");
-  SvSetSlot* slot = svset_search(svs, key);
-  if (slot->key.str == NULL) {
-    slot->key = key;
+  assert(set && *set);
+  if ((*set)->capacity > 0) {
+    struct Entry* p;
+    struct Entry* q;
+    for (usize i = 0; i < (*set)->capacity; ++i) {
+      for (p = (*set)->buckets[i]; p; p = q) {
+        q = p->next;
+        allocator_free(allocator, p, sizeof(*p), alignof(struct Entry));
+      }
+    }
   }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// Delete
-void svset_delete([[maybe_unused]] StringViewSet* svs, [[maybe_unused]] StringView key)
+///
+SetCreateResult set_init([[maybe_unused]] void* buffer, i32 cmp(const void* x, const void* y), u64 hash(const void* x))
 {
-  // Don't worry about deleting for now.
+  assert(buffer);
+  SetCreateResult ret = { .ok = true };
+  Set set;
+  set.cmp = cmp;
+  set.hash = hash;
+  return ret;
 }

@@ -7,6 +7,8 @@
 #include "metrics.h"
 #include "haversine2.h"
 #include "set.h"
+#include "hash.h"
+#include "compare.h"
 
 #include <math.h>
 
@@ -237,7 +239,7 @@ JsonValue* jp_objectGet(const JsonValue* object, StringView key)
     usize count = jp_objectCount(object);
     for (usize i = 0; i < count; ++i) {
         JsonField* field = &AS_OBJECT(object).fields[i];
-        if (strncmp(key.str, field->key.str, key.len) == 0) {
+        if (strncmp(key.str, field->key->str, key.len) == 0) {
             return field->value;
         }
     }
@@ -257,7 +259,12 @@ JsonParserConfig jp_parserConfigInit(Allocator* allocator, Allocator* intern, bo
 /// Initialize the parser itself
 JsonParser jp_parserInit(JsonParserConfig* jpc, StringView source)
 {
-    return (JsonParser){.config = jpc, .source = source, .at = 0, .line = 1, .had_error = false, .intern = svset_create(256, jpc->intern_allocator)};
+    SetCreateResult* try = set_create(509, jpc->intern_allocator, compareStringView, hash_fnv1aStringView);
+    Set* set = NULL;
+    if (set_ok(try)) {
+      set = set_getSet(try);
+    }
+    return (JsonParser){.config = jpc, .source = source, .at = 0, .line = 1, .had_error = false, .intern = set };
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -299,13 +306,14 @@ JsonValueResult jp_parseJsonObject(JsonParser* jp)
         }
 
         // We must be at the start of a key so parse it as a string
-        JsonValueResult key = jp_parseJsonString(jp);
-        if (key.ok == false) {
-            result = key;
-            break;
-        }
+        StringView* key = jp_parseJsonKey(jp);
+        // JsonValueResult key = jp_parseJsonString(jp);
+        // if (key.ok == false) {
+        //     result = key;
+        //     break;
+        // }
 
-        [[maybe_unused]] bool is_new_key = svset_insert(jp->intern, key.value.as.string);
+        // [[maybe_unused]] bool is_new_key = svset_insert(jp->intern, key.value.as.string);
 
         // Look for a colon to separate the key and value
         consumeWhitespace(jp);
@@ -331,7 +339,7 @@ JsonValueResult jp_parseJsonObject(JsonParser* jp)
         // JsonFieldNode* node = allocator_new(jp->config->intern_allocator, JsonFieldNode);
         // JsonFieldNode* node = allocator_new(jp->config->allocator, JsonFieldNode);
         JsonFieldNode* node = allocator_new(allocator, JsonFieldNode);
-        node->field.key = key.value.as.string;
+        node->field.key = key;
         node->field.value = allocator_new(jp->config->allocator, JsonValue);
         *node->field.value = value.value;
         node->next = NULL;
@@ -491,6 +499,54 @@ JsonValueResult jp_parseJsonNumber(JsonParser* jp)
     }
 
     return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Similar to jp_parseJsonString, but intern the key in the string set
+StringView* jp_parseJsonKey(JsonParser* jp)
+{
+  JsonValueResult result = { .ok = true };
+  StringView* key = NULL;
+  advance(jp); // advance is safe because we know we're at an opening quote
+  usize count = 0;
+  usize start = jp->at;
+  while (!isAtEnd(jp) && peek(jp) != '"') {
+    count++; // Count each non-quote character
+    advance(jp);
+  }
+  if (isAtEnd(jp)) {
+    result.ok = false;
+    result.error = jp_makeError(jp, JSON_ERROR_UNEXPECTED_END, "expected closing \"");
+  }
+
+  // Advance past the closing quote
+  advance(jp);
+
+  if (result.ok == true) {
+    // Add an extra space for the null terminator
+    StringView raw = (StringView){ .len = count, .str = &(jp->source.str[start]) };
+    bool exists = set_exists(jp->intern, &raw);
+
+    if (exists) {
+      key = (StringView*)set_get(jp->intern, &raw);
+      // Handle errors
+    } else {
+      String* buf = allocator_alloc(jp->config->intern_allocator, (sizeof(String)) + count + 1, 1);
+      buf->len = count;
+      buf->str = (char*)(buf+1);
+      memcpy((void*)buf->str, &(jp->source.str[start]), count);
+      buf->str[count] = '\0';
+      // StringView temp = (StringView){ .len = count, .str = buf };
+      key = (StringView*)set_tryIntern(jp->intern, jp->config->intern_allocator, buf);
+      // Handle errors
+    }
+
+    result.value.type = JSON_STRING;
+    result.value.as.string = *key;
+  }
+
+  // return result;
+  return key;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

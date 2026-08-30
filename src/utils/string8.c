@@ -129,6 +129,16 @@ bool sv_equal(StringView a, StringView b)
   }
 }
 
+/// Only partly works, but it's good enough for now.
+i32 sv_compare(StringView a, StringView b)
+{
+  if (sv_equal(a, b)) {
+    return 0;
+  } else {
+    return 1;
+  }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 ///
 void sv_print(FILE* f, StringView sv)

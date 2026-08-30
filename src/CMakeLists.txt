@@ -57,6 +57,9 @@ add_executable(haversine2
   utils/string8.c
   utils/metrics.c
   utils/set.c
+  utils/compare.c
+  utils/hash.c
+  # utils/svset.c
   memory/mem.c
   memory/arena_list.c
   memory/fixed_buffer.c
@@ -123,6 +126,8 @@ add_executable(test
   test.c
   utils/string8.c
   utils/set.c
+  utils/compare.c
+  utils/hash.c
   memory/mem.c
   memory/arena_list.c
   memory/fixed_buffer.c

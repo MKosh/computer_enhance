@@ -1,57 +1,50 @@
 #pragma once
 
-#include "allocator.h"
-#include "string8.h"
 #include "types.h"
+#include "string8.h"
+#include "allocator.h"
 
-////////////////////////////////////////////////////////////////////////////////
-typedef struct SvSetSlot {
-  u64 hash;
-  StringView key;
-} SvSetSlot;
+typedef struct Set Set;
+typedef struct SetError SetError;
+typedef struct SetCreateResult SetCreateResult;
+typedef struct SetResult SetResult;
 
+typedef enum SetStatusCode : i32 {
+  SET_STATUS_ALLOCATION_FAIL = -1,
+  SET_STATUS_OK = 0,
+  SET_STATUS_ENTRY_EXISTS,
+  SET_STATUS_COUNT
+} SetStatusCode;
 
-////////////////////////////////////////////////////////////////////////////////
-typedef struct StringViewSet {
-  SvSetSlot* keys;
-  usize capacity;
-  usize count;
-} StringViewSet;
+/// Create a set allocating space for the buckets
+extern SetCreateResult* set_create(u32 hint, Allocator* allocator, i32 cmp(const void* x, const void* y), u64 hash(const void* x));
 
-extern const SvSetSlot NULL_SVSS;
+/// Create a set using an existing buffer for the buckets
+// extern Set* set_init(void* buffer);
+extern SetCreateResult set_init([[maybe_unused]] void* buffer, i32 cmp(const void* x, const void* y), u64 hash(const void* x));
 
-////////////////////////////////////////////////////////////////////////////////
-/// Hash
-u64 hashStringView(StringView s);
+/// Destroy a set created with set_create
+extern void set_destroy(Set** set, Allocator* allocator);
 
-////////////////////////////////////////////////////////////////////////////////
-/// Create
-StringViewSet* svset_create(usize capacity, Allocator* allocator);
+/// Call apply on each member of the set
+extern void set_map(Set* set, void apply(const void* member, void* cl), void* cl);
 
-////////////////////////////////////////////////////////////////////////////////
-/// Init
-void svset_init(StringViewSet* svs, Allocator* allocator, usize capacity);
+/// Check if entry is in the set
+extern bool set_exists(Set* set, void* entry);
 
-////////////////////////////////////////////////////////////////////////////////
-/// Destroy
-void svset_destroy(StringViewSet* svs);
+/// Retrieve the existing entry
+extern const void* set_get(Set* set, void* entry);
 
-////////////////////////////////////////////////////////////////////////////////
-/// Search
-SvSetSlot* svset_search(StringViewSet* svs, StringView key);
+/// Insert an entry into the set
+extern SetStatusCode set_tryInsert(Set* set, Allocator* allocator, void* entry);
+extern const void* set_tryIntern(Set* set, Allocator* allocator, void* entry);
 
-////////////////////////////////////////////////////////////////////////////////
-StringView svset_get(StringViewSet* svs, StringView key);
-const char* svset_getChar(StringViewSet* svs, StringView key);
-const char* svset_getCharFromLiteral(StringViewSet* svs, const char* key);
-bool svset_keyExists(StringViewSet* svs, StringView key);
-bool svset_keyExistsFromLiteral(StringViewSet* svs, const char* key);
+extern bool set_ok(SetCreateResult* res);
+Set* set_getSet(SetCreateResult* res);
 
-////////////////////////////////////////////////////////////////////////////////
-/// Insert
-bool svset_insert(StringViewSet* svs, StringView key);
-StringView svset_intern(StringViewSet* svs, Allocator* allocator, StringView key);
-
-////////////////////////////////////////////////////////////////////////////////
-/// Delete
-void svset_delete(StringViewSet* svs, StringView key);
+/// FNV-1a hash function for StringView
+// u64 set_FnvHashStringView(StringView s);
+u64 set_FnvHashStringView(const void* x);
+i32 set_compareStringView(const void* x, const void* y);
+i32 set_compareCString(const void* x, const void* y);
+u64 set_FnvHashCString(const void* x);
