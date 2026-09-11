@@ -6,6 +6,7 @@
 
 #include "types.h"
 #include "mem.h"
+#include "allocator.h"
 
 typedef struct String String;
 typedef struct StringView StringView;
@@ -18,6 +19,7 @@ struct String {
 };
 
 String string_create(const char* string, usize length);
+String String_alloc(Allocator* allocator, const char* string, usize len);
 String string_readFile(const char* filename);
 void   string_print(String string);
 void   string_println(String string);
@@ -39,6 +41,12 @@ bool   sv_equal(StringView a, StringView b);
 i32    sv_compare(StringView a, StringView b);
 void   sv_print(FILE* f, StringView sv);
 void   sv_println(FILE* f, StringView sv);
-StringView sv_fromString(const String* string);
+StringView sv_fromString(const String string);
 StringView sv_fromLiteral(const char* string);
+StringView sv_fromStringPtr(const String* string);
 
+#define sv_create(x) _Generic((x), \
+            String : sv_fromString, \
+            String* : sv_fromStringPtr, \
+            char* : sv_fromLiteral \
+        )(x)

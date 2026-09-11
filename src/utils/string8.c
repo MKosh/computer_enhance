@@ -3,8 +3,45 @@
 
 #include "types.h"
 #include "string8.h"
+#include "allocator.h"
 
 const StringView NULL_SV = { .len = 0, .str = NULL };
+
+
+String string_readFile2(const char* filename, Allocator* allocator)
+{
+  String ret;
+  FILE* file = fopen(filename, "r");
+  if (file == NULL) {
+    fprintf(stderr, "Error opening file.\n");
+    exit(74);
+  }
+
+  printf("Reading file %s\n", filename);
+
+  fseek(file, 0L, SEEK_END);
+  usize file_size = ftell(file);
+  file_size += 1; // Add an extra byte for the null terminator
+  rewind(file);
+  
+  char* buffer = (char*)allocator_alloc(allocator, file_size, alignof(char));
+  if (buffer == NULL) {
+    fprintf(stderr, "Not enough memory to read \"%s\".\n", filename);
+    exit(74);
+  }
+
+  size_t bytes_read = fread(buffer, sizeof(char), file_size - 1, file);
+  if (bytes_read < file_size - 1) {
+    fprintf(stderr, "Could not read file \"%s\".\n", filename);
+    exit(74);
+  }
+  buffer[file_size - 1] = '\0';
+
+  fclose(file);
+  ret.str = buffer;
+  ret.len = file_size;
+  return ret;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 /// \brief read a file into a normal C buffer
@@ -82,6 +119,22 @@ String string_readFile(const char* filename)
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
+String String_alloc(Allocator* allocator, const char* string, usize len)
+{
+  assert(allocator);
+  assert(string); // +++ think about this. Can a string be NULL? I think so if it's length is 0
+
+  String s;
+  s.str = allocator_alloc(allocator, sizeof(char)*len+1, alignof(char));
+  s.len = len;
+
+  memcpy(s.str, string, len);
+  s.str[len] = '\0';
+  
+  return s;
+}
+////////////////////////////////////////////////////////////////////////////////
+///
 void string_free(String string)
 {
   free(string.str);
@@ -105,9 +158,16 @@ void string_print(String string)
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
-StringView sv_fromString(const String* string)
+StringView sv_fromStringPtr(const String* string)
 {
   return (StringView){.len = string->len, .str = string->str};
+}
+
+////////////////////////////////////////////////////////////////////////////////
+///
+StringView sv_fromString(const String string)
+{
+  return (StringView){.len = string.len, .str = string.str};
 }
 
 ////////////////////////////////////////////////////////////////////////////////

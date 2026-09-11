@@ -3,7 +3,7 @@
 #include "types.h"
 #include "string8.h"
 #include "allocator.h"
-#include "set.h"
+#include "strset.h"
 
 typedef enum {
     JSON_NULL,
@@ -20,7 +20,7 @@ typedef struct JsonObject JsonObject;
 typedef struct JsonField JsonField;
 
 struct JsonField {
-    StringView* key;
+    StringView key;
     JsonValue *value;
 };
 
@@ -73,7 +73,7 @@ struct JsonParser {
   u64 line;
   bool had_error;
   JsonError error;
-  Set* intern;
+  StringSet* intern;
 };
 
 struct JsonResult {
@@ -129,7 +129,7 @@ JsonParser jp_parserInit(JsonParserConfig* jpc, StringView source);
 JsonValueResult jp_parseJsonObject(JsonParser* jp);
 JsonValueResult  jp_parseJsonArray(JsonParser* jp);
 JsonValueResult jp_parseJsonString(JsonParser* jp);
-StringView* jp_parseJsonKey(JsonParser* jp);
+StringView jp_parseJsonKey(JsonParser* jp);
 JsonValueResult jp_parseJsonValue(JsonParser* jp);
 JsonValueResult jp_parseFile(JsonParserConfig* jpc, StringView file);
 JsonValueResult jp_parseJsonBoolean(JsonParser* jp);

@@ -6,7 +6,7 @@
 #include "fixed_buffer.h"
 #include "metrics.h"
 #include "haversine2.h"
-#include "set.h"
+#include "strset.h"
 #include "hash.h"
 #include "compare.h"
 
@@ -239,7 +239,7 @@ JsonValue* jp_objectGet(const JsonValue* object, StringView key)
     usize count = jp_objectCount(object);
     for (usize i = 0; i < count; ++i) {
         JsonField* field = &AS_OBJECT(object).fields[i];
-        if (strncmp(key.str, field->key->str, key.len) == 0) {
+        if (strncmp(key.str, field->key.str, key.len) == 0) {
             return field->value;
         }
     }
@@ -259,11 +259,21 @@ JsonParserConfig jp_parserConfigInit(Allocator* allocator, Allocator* intern, bo
 /// Initialize the parser itself
 JsonParser jp_parserInit(JsonParserConfig* jpc, StringView source)
 {
-    SetCreateResult* try = set_create(509, jpc->intern_allocator, compareStringView, hash_fnv1aStringView);
-    Set* set = NULL;
-    if (set_ok(try)) {
-      set = set_getSet(try);
-    }
+    // SetCreateResult* try = set_create(509, jpc->intern_allocator, compareStringView, hash_fnv1aStringView);
+    // Set* set = NULL;
+    // if (set_ok(try)) {
+    //   set = set_getSet(try);
+    // }
+    // SetCreateResult* try = NULL;
+    // Set* set = nullptr;
+    // if (set_ok(try = set_create(509, jpc->intern_allocator, compareStringView, hash_fnv1aStringView))) {
+    //   set = set_getSet(try);
+    // } else {
+    //   fprintf(stderr, "Error: Couldn't Initialize string set.\n");
+    //   exit(-1);
+    // }
+    i32 status = 0;
+    StringSet* set = StringSet_create(509, jpc->intern_allocator, &status);
     return (JsonParser){.config = jpc, .source = source, .at = 0, .line = 1, .had_error = false, .intern = set };
 }
 
@@ -306,7 +316,7 @@ JsonValueResult jp_parseJsonObject(JsonParser* jp)
         }
 
         // We must be at the start of a key so parse it as a string
-        StringView* key = jp_parseJsonKey(jp);
+        StringView key = jp_parseJsonKey(jp);
         // JsonValueResult key = jp_parseJsonString(jp);
         // if (key.ok == false) {
         //     result = key;
@@ -503,10 +513,10 @@ JsonValueResult jp_parseJsonNumber(JsonParser* jp)
 
 ////////////////////////////////////////////////////////////////////////////////
 /// Similar to jp_parseJsonString, but intern the key in the string set
-StringView* jp_parseJsonKey(JsonParser* jp)
+StringView jp_parseJsonKey(JsonParser* jp)
 {
   JsonValueResult result = { .ok = true };
-  StringView* key = NULL;
+  StringView key = NULL_SV;
   advance(jp); // advance is safe because we know we're at an opening quote
   usize count = 0;
   usize start = jp->at;
@@ -521,32 +531,39 @@ StringView* jp_parseJsonKey(JsonParser* jp)
 
   // Advance past the closing quote
   advance(jp);
-
+  //////// +++ New way where the StringSet itself does the allocations
   if (result.ok == true) {
-    // Add an extra space for the null terminator
     StringView raw = (StringView){ .len = count, .str = &(jp->source.str[start]) };
-    bool exists = set_exists(jp->intern, &raw);
-
-    if (exists) {
-      key = (StringView*)set_get(jp->intern, &raw);
-      // Handle errors
-    } else {
-      String* buf = allocator_alloc(jp->config->intern_allocator, (sizeof(String)) + count + 1, 1);
-      buf->len = count;
-      buf->str = (char*)(buf+1);
-      memcpy((void*)buf->str, &(jp->source.str[start]), count);
-      buf->str[count] = '\0';
-      // StringView temp = (StringView){ .len = count, .str = buf };
-      key = (StringView*)set_tryIntern(jp->intern, jp->config->intern_allocator, buf);
-      // Handle errors
-    }
-
-    result.value.type = JSON_STRING;
-    result.value.as.string = *key;
+    key = StringSet_tryInsert(jp->intern, raw);
   }
+  return key;
+
+  /////// +++ Old way of interning, where the parser does the allocation.
+  // if (result.ok == true) {
+  //   // Add an extra space for the null terminator
+  //   StringView raw = (StringView){ .len = count, .str = &(jp->source.str[start]) };
+  //   bool exists = set_exists(jp->intern, &raw);
+  //
+  //   if (exists) {
+  //     key = (StringView*)set_get(jp->intern, &raw);
+  //     // Handle errors
+  //   } else {
+  //     String* buf = allocator_alloc(jp->config->intern_allocator, (sizeof(String)) + count + 1, 1);
+  //     buf->len = count;
+  //     buf->str = (char*)(buf+1);
+  //     memcpy((void*)buf->str, &(jp->source.str[start]), count);
+  //     buf->str[count] = '\0';
+  //     // StringView temp = (StringView){ .len = count, .str = buf };
+  //     key = (StringView*)set_tryIntern(jp->intern, jp->config->intern_allocator, buf);
+  //     // Handle errors
+  //   }
+  //
+  //   result.value.type = JSON_STRING;
+  //   result.value.as.string = *key;
+  // }
+  // return key;
 
   // return result;
-  return key;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -579,6 +596,8 @@ JsonValueResult jp_parseJsonString(JsonParser* jp)
 
     // Advance past the closing quote
     advance(jp);
+    String str1 = { .len = 5, "hello" };
+    sv_create(&str1);
 
     if (result.ok == true) {
         // Add an extra space for the null terminator
@@ -770,7 +789,7 @@ JsonValueResult jp_parseFile(JsonParserConfig* jpc, StringView file)
 
     JsonParserConfig jpc = jp_parserConfigInit(arena, buf, true);
     ProfileBlock(parse, "Parse file");
-    [[maybe_unused]] JsonValueResult root = jp_parseFile(&jpc, sv_fromString(&file_contents));
+    [[maybe_unused]] JsonValueResult root = jp_parseFile(&jpc, sv_create(&file_contents));
     if (root.ok == false) {
         allocator_destroy(arena);
         // allocator_destroy(intern);
@@ -788,7 +807,8 @@ JsonValueResult jp_parseFile(JsonParserConfig* jpc, StringView file)
     f64 run = 0.;
     for (usize i = 0; i < elements; ++i) {
         JsonValue* elem = jp_arrayAt(pairs, i);
-        f64 x0 = AS_NUMBER(jp_objectGet(elem, (StringView){ .len = 2, .str = "x0"}));
+        f64 x0 = AS_NUMBER(jp_objectGet(elem, sv_create("x0")));
+        // f64 x0 = AS_NUMBER(jp_objectGet(elem, (StringView){ .len = 2, .str = "x0"}));
         f64 y0 = AS_NUMBER(jp_objectGet(elem, (StringView){ .len = 2, .str = "y0"}));
         f64 x1 = AS_NUMBER(jp_objectGet(elem, (StringView){ .len = 2, .str = "x1"}));
         f64 y1 = AS_NUMBER(jp_objectGet(elem, (StringView){ .len = 2, .str = "y1"}));

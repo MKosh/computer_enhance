@@ -20,6 +20,10 @@
 
 void* reallocate(void* pointer, size_t old_size, size_t new_size);
 
+#define KiB(n) ((u64)(n) << 10);
+#define MiB(n) ((u64)(n) << 20);
+#define GiB(n) ((u64)(n) << 30);
+
 // typedef struct Arena {
 //   u8* pos;
 //   u8* end;
