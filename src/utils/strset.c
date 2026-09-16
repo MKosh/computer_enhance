@@ -20,6 +20,7 @@ StringSet* StringSet_create(u32 hint, Allocator* allocator, i32* status)
     set->capacity = primes[i-1];
     set->count = 0;
     set->buckets = (struct Entry**)(set + 1);
+    set->allocator = allocator;
     for (i = 0; i < set->capacity; ++i) {
       set->buckets[i] = NULL;
     }
@@ -55,10 +56,10 @@ StringView StringSet_tryInsert(StringSet* set, StringView entry)
   u64 hash = hashStringView(entry);
   usize bucket = hash % set->capacity;
   struct Entry* link = NULL;
+  // printf("Sizeof entry: %lu\n", sizeof(struct Entry));
 
   for (link = set->buckets[bucket]; link; link = link->next) {
-    // Check if the entry is already in the bucket
-    if (sv_equal(entry, link->value) == 0) {
+    if (sv_equal(entry, link->value)) {
       status = SET_STATUS_ENTRY_EXISTS;
       break;
     }
@@ -73,6 +74,7 @@ StringView StringSet_tryInsert(StringSet* set, StringView entry)
     // Allocate space for the backing string and set its value as the input
     String s = String_alloc(set->allocator, entry.str, entry.len);
     link->value = sv_create(s);
+    // printf("Added: %.*s\n", (int)link->value.len, link->value.str);
   }
 
   return link->value;

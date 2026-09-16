@@ -67,6 +67,7 @@ static void* fixed_buffer_alloc(Allocator* a, usize size, usize align) {
 
   if (next > (uptr)(buffer->buffer + buffer->buffer_size)) {
     fprintf(stderr, "FixedBuffer allocation failed.\n");
+    abort();
     return NULL;
   }
 

@@ -501,10 +501,10 @@ JsonValueResult jp_parseJsonNumber(JsonParser* jp)
     // advance by the number of characters strtod consumed.
     if (result.ok == true) {
         jp->at += (end - start);
-        f64* num = allocator_new(jp->config->allocator, f64);
-        *num = number;
+        // f64* num = allocator_new(jp->config->allocator, f64);
+        // *num = number;
         result.value.type = JSON_NUMBER;
-        result.value.as.number = *num;
+        result.value.as.number = number;
         // result.value = (JsonValue){ .type = JSON_NUMBER, .as.number = number };
     }
 
@@ -596,8 +596,6 @@ JsonValueResult jp_parseJsonString(JsonParser* jp)
 
     // Advance past the closing quote
     advance(jp);
-    String str1 = { .len = 5, "hello" };
-    sv_create(&str1);
 
     if (result.ok == true) {
         // Add an extra space for the null terminator
@@ -778,9 +776,9 @@ JsonValueResult jp_parseFile(JsonParserConfig* jpc, StringView file)
 [[maybe_unused]] void pretend_main(const char* file_name) {
     profilerInit(&prof);
     profilerBegin(&prof);
-    Allocator* arena = arena_list_allocator_create(10 * 1024 * 1024);
-    u8* buffer = malloc(10 * 1024);
-    Allocator* buf   = fixed_buffer_allocator_create(buffer, 10*1024);
+    Allocator* arena = arena_list_allocator_create(MiB(10));
+    u8* buffer = malloc(KiB(10));
+    Allocator* buf   = fixed_buffer_allocator_create(buffer, KiB(10));
     // Allocator* intern = arena_list_allocator_create(10 * 1024);
 
     ProfileBlock(read, "Read input");
