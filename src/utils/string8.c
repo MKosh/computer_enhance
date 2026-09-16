@@ -82,7 +82,7 @@ char* readFile(const char* filename, u64* size)
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
-String string_readFile(const char* filename)
+String String_readFile(const char* filename, Allocator* allocator)
 {
   String ret;
   FILE* file = fopen(filename, "r");
@@ -98,7 +98,7 @@ String string_readFile(const char* filename)
   file_size += 1; // Add an extra byte for the null terminator
   rewind(file);
   
-  char* buffer = (char*)malloc(file_size);
+  char* buffer = allocator ? allocator_alloc(allocator, file_size, alignof(u8)) :  malloc(file_size);
   if (buffer == NULL) {
     fprintf(stderr, "Not enough memory to read \"%s\".\n", filename);
     exit(74);
@@ -119,13 +119,11 @@ String string_readFile(const char* filename)
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
-String String_alloc(Allocator* allocator, const char* string, usize len)
+/// Passing NULL for the allocator defaults to malloc
+String String_alloc(const char* string, usize len, Allocator* allocator)
 {
-  assert(allocator);
-  assert(string); // +++ think about this. Can a string be NULL? I think so if it's length is 0
-
   String s;
-  s.str = allocator_alloc(allocator, sizeof(char)*len+1, alignof(char));
+  s.str = allocator ? allocator_alloc(allocator, sizeof(char)*len+1, alignof(char)) : malloc(sizeof(char)*len+1);
   s.len = len;
 
   memcpy(s.str, string, len);
@@ -135,23 +133,28 @@ String String_alloc(Allocator* allocator, const char* string, usize len)
 }
 ////////////////////////////////////////////////////////////////////////////////
 ///
-void string_free(String string)
+/// Passing NULL for the allocator defaults to free
+void String_free(String* string, Allocator* allocator)
 {
-  free(string.str);
-  string.str = NULL;
-  string.len = 0;
+  if (allocator) {
+    allocator_free(allocator, string->str, string->len+1, alignof(u8));
+  } else {
+    free(string->str);
+  }
+  string->str = NULL;
+  string->len = 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
-void string_println(String string)
+void String_println(String string)
 {
   printf("%.*s\n", (int)string.len, string.str);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
-void string_print(String string)
+void String_print(String string)
 {
   printf("%.*s", (int)string.len, string.str);
 }

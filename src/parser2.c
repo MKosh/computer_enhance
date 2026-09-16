@@ -6,17 +6,15 @@
 #include "fixed_buffer.h"
 #include "metrics.h"
 #include "haversine2.h"
-#include "strset.h"
-#include "hash.h"
-#include "compare.h"
+#include "stringset.h"
 
 #include <math.h>
 
 /// 
 /// TODO:
-///   - [ ] Modify functions to return result values
-///   - [ ] String interning for JSON keys
-///   - [ ] Arena for parseJsonObject
+///   - [x] Modify functions to return result values
+///   - [x] String interning for JSON keys
+///   - [x] Arena for parseJsonObject
 ///   - [x] Add timers
 ///   - [x] Add functions to retrieve values
 ///   - [x] Haversine calculation
@@ -259,19 +257,6 @@ JsonParserConfig jp_parserConfigInit(Allocator* allocator, Allocator* intern, bo
 /// Initialize the parser itself
 JsonParser jp_parserInit(JsonParserConfig* jpc, StringView source)
 {
-    // SetCreateResult* try = set_create(509, jpc->intern_allocator, compareStringView, hash_fnv1aStringView);
-    // Set* set = NULL;
-    // if (set_ok(try)) {
-    //   set = set_getSet(try);
-    // }
-    // SetCreateResult* try = NULL;
-    // Set* set = nullptr;
-    // if (set_ok(try = set_create(509, jpc->intern_allocator, compareStringView, hash_fnv1aStringView))) {
-    //   set = set_getSet(try);
-    // } else {
-    //   fprintf(stderr, "Error: Couldn't Initialize string set.\n");
-    //   exit(-1);
-    // }
     i32 status = 0;
     StringSet* set = StringSet_create(509, jpc->intern_allocator, &status);
     return (JsonParser){.config = jpc, .source = source, .at = 0, .line = 1, .had_error = false, .intern = set };
@@ -304,7 +289,6 @@ JsonValueResult jp_parseJsonObject(JsonParser* jp)
     FixedBufferAllocator fba;
     fixed_buffer_allocator_init(&fba, buf, 4096);
     Allocator* allocator = &fba.base;
-    // Allocator* buffer = fixed_buffer_allocator_create(buf, 4096);
 
     while (!isAtEnd(jp)) {
         // Look for a string to denote the start of a key
@@ -317,13 +301,6 @@ JsonValueResult jp_parseJsonObject(JsonParser* jp)
 
         // We must be at the start of a key so parse it as a string
         StringView key = jp_parseJsonKey(jp);
-        // JsonValueResult key = jp_parseJsonString(jp);
-        // if (key.ok == false) {
-        //     result = key;
-        //     break;
-        // }
-
-        // [[maybe_unused]] bool is_new_key = svset_insert(jp->intern, key.value.as.string);
 
         // Look for a colon to separate the key and value
         consumeWhitespace(jp);
@@ -346,8 +323,6 @@ JsonValueResult jp_parseJsonObject(JsonParser* jp)
         }
 
         // Store the field in a new node
-        // JsonFieldNode* node = allocator_new(jp->config->intern_allocator, JsonFieldNode);
-        // JsonFieldNode* node = allocator_new(jp->config->allocator, JsonFieldNode);
         JsonFieldNode* node = allocator_new(allocator, JsonFieldNode);
         node->field.key = key;
         node->field.value = allocator_new(jp->config->allocator, JsonValue);
@@ -414,7 +389,6 @@ JsonValueResult jp_parseJsonArray(JsonParser* jp)
 
     while (!isAtEnd(jp)) {
         JsonValueResult value = jp_parseJsonValue(jp);
-        // if (jp->had_error) { break; }
         if (value.ok == false) {
             result.ok = false;
             result.error = value.error;
@@ -426,7 +400,6 @@ JsonValueResult jp_parseJsonArray(JsonParser* jp)
             temp = realloc(temp, sizeof(JsonValue) * capacity);
         }
 
-        // temp[count++] = *result.root;
         temp[count++] = value.value;
 
         consumeWhitespace(jp);
@@ -441,18 +414,9 @@ JsonValueResult jp_parseJsonArray(JsonParser* jp)
         } else {
             result.ok = false;
             result.error = jp_makeError(jp, JSON_ERROR_UNEXPECTED_TOKEN, "expected ','");
-            // fprintf(stderr, "Error expected ',' around line %ld\n", jp->line);
-            // static char err_message[] = "Error parsing array";
-            // jp->had_error = true;
-            // jp->error = (JsonError){.code = JSON_ERROR_UNEXPECTED_TOKEN, .line = jp->line, {.len = strlen(err_message), .str = err_message}};
-            // free(temp);
             break;
         }
     }
-
-    // if (jp->had_error) {
-    //     return (JsonArray){ 0 };
-    // }
 
     if (result.ok == true) {
         array.count = count;
@@ -480,32 +444,20 @@ JsonValueResult jp_parseJsonNumber(JsonParser* jp)
     number = strtod(start, &end);
 
     if (end == start) {
-        // fprintf(stderr, "Error parsing number, no valid numbers.\n");
         result.ok = false;
         result.error = jp_makeError(jp, JSON_ERROR_UNEXPECTED_TOKEN, "No valid numbers to parse.");
     }
 
     if (isnan(number)) {
-        // fprintf(stderr, "Error parsing number, got NAN.\n");
         result.ok = false;
         result.error = jp_makeError(jp, JSON_ERROR_UNEXPECTED_TOKEN, "Trying to parse NAN.");
     }
 
-    // if (result.ok == false) {
-    //     static char err_message[] = "Error parsing number";
-    //     jp->had_error = true;
-    //     jp->error = (JsonError){.code = JSON_ERROR_UNEXPECTED_TOKEN, .line = jp->line, {.len = strlen(err_message), .str = err_message}};
-    //     return NAN;
-    // }
-
     // advance by the number of characters strtod consumed.
     if (result.ok == true) {
         jp->at += (end - start);
-        // f64* num = allocator_new(jp->config->allocator, f64);
-        // *num = number;
         result.value.type = JSON_NUMBER;
         result.value.as.number = number;
-        // result.value = (JsonValue){ .type = JSON_NUMBER, .as.number = number };
     }
 
     return result;
@@ -531,39 +483,11 @@ StringView jp_parseJsonKey(JsonParser* jp)
 
   // Advance past the closing quote
   advance(jp);
-  //////// +++ New way where the StringSet itself does the allocations
   if (result.ok == true) {
     StringView raw = (StringView){ .len = count, .str = &(jp->source.str[start]) };
     key = StringSet_tryInsert(jp->intern, raw);
   }
   return key;
-
-  /////// +++ Old way of interning, where the parser does the allocation.
-  // if (result.ok == true) {
-  //   // Add an extra space for the null terminator
-  //   StringView raw = (StringView){ .len = count, .str = &(jp->source.str[start]) };
-  //   bool exists = set_exists(jp->intern, &raw);
-  //
-  //   if (exists) {
-  //     key = (StringView*)set_get(jp->intern, &raw);
-  //     // Handle errors
-  //   } else {
-  //     String* buf = allocator_alloc(jp->config->intern_allocator, (sizeof(String)) + count + 1, 1);
-  //     buf->len = count;
-  //     buf->str = (char*)(buf+1);
-  //     memcpy((void*)buf->str, &(jp->source.str[start]), count);
-  //     buf->str[count] = '\0';
-  //     // StringView temp = (StringView){ .len = count, .str = buf };
-  //     key = (StringView*)set_tryIntern(jp->intern, jp->config->intern_allocator, buf);
-  //     // Handle errors
-  //   }
-  //
-  //   result.value.type = JSON_STRING;
-  //   result.value.as.string = *key;
-  // }
-  // return key;
-
-  // return result;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -586,12 +510,6 @@ JsonValueResult jp_parseJsonString(JsonParser* jp)
     if (isAtEnd(jp)) {
         result.ok = false;
         result.error = jp_makeError(jp, JSON_ERROR_UNEXPECTED_END, "expected closing \"");
-        // At end but haven't seen the closing quote?
-        // fprintf(stderr, "Error unexpected end.\n");
-        // jp->had_error = true;
-        // static char err_message[] = "Unexpected end of file";
-        // jp->error = (JsonError){.code = JSON_ERROR_UNEXPECTED_END, .line = jp->line, {.len = strlen(err_message), .str = err_message}};
-        // return (StringView){.len = 0, .str = NULL};
     }
 
     // Advance past the closing quote
@@ -608,35 +526,6 @@ JsonValueResult jp_parseJsonString(JsonParser* jp)
     }
 
     return result;
-    // return (StringView){.len = count, .str = buf};
-
-    // interning ideas?
-    // StringView* stringTableGet(Table* table, StringView key) {
-    //   StringView* entry = (StringView*)table_get(table, key);
-    //   if (entry == NULL) {
-    //     return &NULL_SV;
-    //   }
-    //   return entry;
-    // }
-    // void* table_get(Table* table, StringView key) {
-    //   i32 index = hash(key);
-    //   if (table->entries[index]->key == key) {
-    //     return table->entries[index];
-    //   } else {
-    //     return NULL;
-    //   }
-    // }
-    //
-    // StringView* stringTableSet(Table* table, Allocator* allocator, StringView key);
-    //
-    // StringView temp = {.len = count, .str = &(jp->source.str[start])};
-    // StringView* entry = stringTableGet(jp->strings, temp)
-    // if (IS_NULL_SV(entry)) {
-    //   entry = stringTableSet(jp->strings, jp->config->intern_allocator, entry);
-    // }
-    //
-    // return entry;
-    //
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -648,24 +537,17 @@ JsonValueResult jp_parseJsonBoolean(JsonParser* jp);
 JsonValueResult jp_parseJsonValue(JsonParser* jp)
 {
     JsonValueResult result = { .ok = true };
-    // JsonValue value = { 0 };
     consumeWhitespace(jp);
     switch (peek(jp)) {
         case '{': {
-                      // value.type = JSON_OBJECT;
-                      // value.as.object = jp_parseJsonObject(jp);
                       result = jp_parseJsonObject(jp);
                       break;
                   }
         case '[': {
-                      // value.type = JSON_ARRAY;
-                      // value.as.array = jp_parseJsonArray(jp);
                       result = jp_parseJsonArray(jp);
                       break;
                   }
         case '"': {
-                      // value.type = JSON_STRING;
-                      // value.as.string = jp_parseJsonString(jp);
                       result = jp_parseJsonString(jp);
                       break;
                   }
@@ -674,8 +556,6 @@ JsonValueResult jp_parseJsonValue(JsonParser* jp)
                               strncmp(&(jp->source.str[jp->at]), "true", 4) == 0) {
                           result.value.type = JSON_BOOL;
                           result.value.as.boolean = true;
-                          // value.type = JSON_BOOL;
-                          // value.as.boolean = true;
                           advanceBy(jp, 4);
                       } else {
                           result.ok = false;
@@ -686,8 +566,6 @@ JsonValueResult jp_parseJsonValue(JsonParser* jp)
         case 'f': {
                       if (jp->at + 5 <= jp->source.len &&
                               strncmp(&(jp->source.str[jp->at]), "false", 5) == 0) {
-                          // value.type = JSON_BOOL;
-                          // value.as.boolean = false;
                           result.value.type = JSON_BOOL;
                           result.value.as.boolean = false;
                           advanceBy(jp, 5);
@@ -700,7 +578,6 @@ JsonValueResult jp_parseJsonValue(JsonParser* jp)
         case 'n': {
                       if (jp->at + 4 <= jp->source.len &&
                               strncmp(&(jp->source.str[jp->at]), "null", 4) == 0) {
-                          // value.type = JSON_NULL;
                           result.value.type = JSON_NULL;
                           // NULL carries no actual value
                           advanceBy(jp, 4);
@@ -721,35 +598,18 @@ JsonValueResult jp_parseJsonValue(JsonParser* jp)
         case '7':
         case '8':
         case '9': {
-                      // value.type = JSON_NUMBER;
-                      // value.as.number = jp_parseJsonNumber(jp);
                       result = jp_parseJsonNumber(jp);
                       break;
                   }
         default: {
                      result.ok = false;
                      result.error = jp_makeError(jp, JSON_ERROR_UNEXPECTED_TOKEN, "unexpected symbol.");
-                     // jp->had_error = true;
-                     // static char err_message[] = "Unexpected character";
-                     // jp->error = (JsonError){.code = JSON_ERROR_UNEXPECTED_TOKEN, .line = jp->line, {.len = strlen(err_message), .str = err_message}};
                      break;
                  }
     }
 
-    // if (jp->had_error) {
-    //     // Handle error
-    //     fprintf(stderr, "Error: %.*s\n", (int)jp->error.message.len, jp->error.message.str);
-    //     return (JsonResult){.root = NULL, .error = jp->error};
-    // }
-    
-    // JsonValueResult* r = allocator_new(jp->config->allocator, JsonValueResult);
-    // *r = result;
-    // return *r;
     return result;
 
-    // JsonValue* result = allocator_new(jp->config->allocator, JsonValue);
-    // *result = value;
-    // return (JsonResult){.root = result, .error = {.code = JSON_OK}};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -782,7 +642,7 @@ JsonValueResult jp_parseFile(JsonParserConfig* jpc, StringView file)
     // Allocator* intern = arena_list_allocator_create(10 * 1024);
 
     ProfileBlock(read, "Read input");
-    String file_contents = string_readFile(file_name);
+    String file_contents = String_readFile(file_name, NULL);
     ProfileBlockEnd(read);
 
     JsonParserConfig jpc = jp_parserConfigInit(arena, buf, true);
@@ -791,7 +651,7 @@ JsonValueResult jp_parseFile(JsonParserConfig* jpc, StringView file)
     if (root.ok == false) {
         allocator_destroy(arena);
         // allocator_destroy(intern);
-        string_free(file_contents);
+        String_free(&file_contents, NULL);
     }
     ProfileBlockEnd(parse);
 
@@ -824,7 +684,7 @@ JsonValueResult jp_parseFile(JsonParserConfig* jpc, StringView file)
     allocator_destroy(arena);
     allocator_destroy(buf);
     free(buffer);
-    string_free(file_contents);
+    String_free(&file_contents, NULL);
     ProfileBlockEnd(dealloc);
 
     profilerEndAndPrint(&prof);

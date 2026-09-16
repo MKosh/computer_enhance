@@ -190,7 +190,7 @@ void freeJsonValue(JsonValue* value)
       break;
     case JSON_STRING: {
       if (DEBUG_) printf("Freeing string: %s\n", value->as.string.str);
-      string_free(value->as.string);
+      String_free(&value->as.string, NULL);
       break;
     }
     case JSON_ARRAY: {
@@ -233,7 +233,7 @@ void freeJsonMember(JsonMember* member)
   }
 
   if (DEBUG_) printf("Freeing member: %s\n", member->name.str);
-  string_free(member->name);
+  String_free(&member->name, NULL);
   freeJsonElements(member->element);
   member->next = NULL;
   if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
@@ -294,7 +294,7 @@ void printJsonObject(JsonObject* obj)
   printf("{");
   for (JsonMember* member = obj->members; member != NULL; member = member->next) {
     printf("\"");
-    string_println(member->name);
+    String_println(member->name);
     printf("\"");
     printf(": ");
     printJsonElement(member->element);
@@ -767,7 +767,7 @@ void initParser(JsonParser* parser, String source)
 ///
 void freeParser(JsonParser* parser)
 {
-  string_free(parser->source);
+  String_free(&parser->source, NULL);
   clearParser(parser);
 }
 

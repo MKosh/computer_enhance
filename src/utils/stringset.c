@@ -1,4 +1,4 @@
-#include "strset.h"
+#include "stringset.h"
 #include <limits.h>
 #include <stdalign.h>
 
@@ -72,7 +72,7 @@ StringView StringSet_tryInsert(StringSet* set, StringView entry)
     link->next = set->buckets[bucket];
     set->buckets[bucket] = link;
     // Allocate space for the backing string and set its value as the input
-    String s = String_alloc(set->allocator, entry.str, entry.len);
+    String s = String_alloc(entry.str, entry.len, set->allocator);
     link->value = sv_create(s);
     // printf("Added: %.*s\n", (int)link->value.len, link->value.str);
   }

@@ -18,14 +18,14 @@ struct String {
   char* str; ///< Pointer to the start of the string.
 };
 
-String string_create(const char* string, usize length);
-String String_alloc(Allocator* allocator, const char* string, usize len);
-String string_readFile(const char* filename);
-void   string_print(String string);
-void   string_println(String string);
-void   string_free(String string);
-void   string_append(String* string, StringView suffix);
-String string_clone(const String* string);
+String String_create(const char* string, usize length);
+String String_alloc(const char* string, usize len, Allocator* allocator);
+String String_readFile(const char* filename, Allocator* allocator);
+void   String_print(String string);
+void   String_println(String string);
+void   String_free(String* string, Allocator* allocator);
+void   String_append(String* string, StringView suffix);
+String String_clone(const String* string);
 
 ////////////////////////////////////////////////////////////////////////////////
 /// \brief Non-owning view into a String

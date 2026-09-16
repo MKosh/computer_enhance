@@ -3,7 +3,7 @@
 #include "types.h"
 #include "string8.h"
 #include "allocator.h"
-#include "strset.h"
+#include "stringset.h"
 
 typedef enum {
     JSON_NULL,

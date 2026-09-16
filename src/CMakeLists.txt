@@ -56,9 +56,9 @@ add_executable(haversine2
   parser2.c
   utils/string8.c
   utils/metrics.c
-  utils/strset.c
-  utils/compare.c
-  utils/hash.c
+  utils/stringset.c
+  # utils/compare.c
+  # utils/hash.c
   # utils/svset.c
   memory/mem.c
   memory/arena_list.c
@@ -125,9 +125,9 @@ target_compile_definitions(haversine2 PRIVATE
 add_executable(test
   test.c
   utils/string8.c
-  utils/set.c
-  utils/compare.c
-  utils/hash.c
+  # utils/set.c
+  # utils/compare.c
+  # utils/hash.c
   memory/mem.c
   memory/arena_list.c
   memory/fixed_buffer.c

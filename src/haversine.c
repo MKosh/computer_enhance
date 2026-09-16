@@ -63,7 +63,7 @@ int main(int argc, char* argv[]) {
   profilerBegin(&prof);
   ProfileBlock(read, "Read Input");
   JsonParser parser;
-  initParser(&parser, string_readFile(file_arg));
+  initParser(&parser, String_readFile(file_arg, NULL));
   ProfileBlockEnd(read);
 
   JsonDocument doc;
