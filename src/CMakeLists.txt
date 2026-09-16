@@ -52,14 +52,10 @@ target_link_options(haversine PRIVATE
 ################################################################################
 add_executable(haversine2
   haversine2.c
-  json2.c
   parser2.c
   utils/string8.c
   utils/metrics.c
   utils/stringset.c
-  # utils/compare.c
-  # utils/hash.c
-  # utils/svset.c
   memory/mem.c
   memory/arena_list.c
   memory/fixed_buffer.c

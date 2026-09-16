@@ -12,12 +12,9 @@
 
 /// 
 /// TODO:
-///   - [x] Modify functions to return result values
-///   - [x] String interning for JSON keys
-///   - [x] Arena for parseJsonObject
+///   - [ ] Add tables for timers (and possibly values?)
 ///   - [x] Add timers
 ///   - [x] Add functions to retrieve values
-///   - [x] Haversine calculation
 ///
 
 extern Profiler prof;
@@ -243,6 +240,30 @@ JsonValue* jp_objectGet(const JsonValue* object, StringView key)
     }
 
     fprintf(stderr, "Couldn't find key %.*s\n", (int)key.len, key.str);
+    return NULL;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Retrieve the JSON value with the corresponding key
+JsonValue* jp_objectGetCharPtr(const JsonValue* object, char* key)
+{
+    assert(object && "nullptr as object");
+    if (!IS_OBJECT(object)) {
+        fprintf(stderr, "Error, value is not object\n");
+        fprintf(stderr, "  Value is type: %d\n", object->type);
+        return NULL;
+    }
+
+    usize len = strlen(key);
+    usize count = jp_objectCount(object);
+    for (usize i = 0; i < count; ++i) {
+        JsonField* field = &AS_OBJECT(object).fields[i];
+        if (strncmp(key, field->key.str, len) == 0) {
+            return field->value;
+        }
+    }
+
+    fprintf(stderr, "Couldn't find key %.*s\n", (int)len, key);
     return NULL;
 }
 
@@ -665,16 +686,13 @@ JsonValueResult jp_parseFile(JsonParserConfig* jpc, StringView file)
     f64 run = 0.;
     for (usize i = 0; i < elements; ++i) {
         JsonValue* elem = jp_arrayAt(pairs, i);
-        f64 x0 = AS_NUMBER(jp_objectGet(elem, sv_create("x0")));
-        // f64 x0 = AS_NUMBER(jp_objectGet(elem, (StringView){ .len = 2, .str = "x0"}));
-        f64 y0 = AS_NUMBER(jp_objectGet(elem, (StringView){ .len = 2, .str = "y0"}));
-        f64 x1 = AS_NUMBER(jp_objectGet(elem, (StringView){ .len = 2, .str = "x1"}));
-        f64 y1 = AS_NUMBER(jp_objectGet(elem, (StringView){ .len = 2, .str = "y1"}));
+        f64 x0 = AS_NUMBER(objectGet(elem, "x0"));
+        f64 y0 = AS_NUMBER(objectGet(elem, "y0"));
+        f64 x1 = AS_NUMBER(objectGet(elem, "x1"));
+        f64 y1 = AS_NUMBER(objectGet(elem, "y1"));
         run = referenceHaversine(x0, y0, x1, y1);
-        // printf("Run %ld: %f\n", i, run);
         sum += run;
         N++;
-        // printf("Pairs: (%g, %g), (%g, %g) -> %g\n", x0, y0, x1, y1, run);
     }
 
     printf("Haversine distance = %g/%g = %g\n", sum, N, sum/N);

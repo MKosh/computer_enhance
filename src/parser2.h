@@ -5,6 +5,23 @@
 #include "allocator.h"
 #include "stringset.h"
 
+////////////////////////////////////////////////////////////////////////////////
+/// Forward struct declarations
+////////////////////////////////////////////////////////////////////////////////
+typedef struct JsonValue JsonValue;
+typedef struct JsonArray JsonArray;
+typedef struct JsonObject JsonObject;
+typedef struct JsonField JsonField;
+typedef struct JsonParser JsonParser;
+typedef struct JsonResult JsonResult;
+typedef struct JsonParserConfig JsonParserConfig;
+
+////////////////////////////////////////////////////////////////////////////////
+/// Type definitions
+////////////////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////////////////
+///
 typedef enum {
     JSON_NULL,
     JSON_BOOL,
@@ -14,26 +31,29 @@ typedef enum {
     JSON_OBJECT,
 } JsonType;
 
-typedef struct JsonValue JsonValue;
-typedef struct JsonArray JsonArray;
-typedef struct JsonObject JsonObject;
-typedef struct JsonField JsonField;
-
+////////////////////////////////////////////////////////////////////////////////
+///
 struct JsonField {
     StringView key;
     JsonValue *value;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+///
 struct JsonArray {
   JsonValue* items;
   size_t count;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+///
 struct JsonObject {
   JsonField* fields;
   size_t count;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+///
 struct JsonValue {
     JsonType type;
     union {
@@ -45,6 +65,8 @@ struct JsonValue {
     } as;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+///
 typedef enum {
     JSON_OK,
     JSON_ERROR_UNEXPECTED_TOKEN,
@@ -56,16 +78,17 @@ typedef enum {
     JSON_ERROR_OUT_OF_MEMORY,
 } JsonErrorCode;
 
+////////////////////////////////////////////////////////////////////////////////
+///
 typedef struct {
     JsonErrorCode code;
     u64           line;
     StringView    message;   // points into a static string — no allocation
 } JsonError;
 
-typedef struct JsonParser JsonParser;
-typedef struct JsonResult JsonResult;
-typedef struct JsonParserConfig JsonParserConfig;
 
+////////////////////////////////////////////////////////////////////////////////
+///
 struct JsonParser {
   JsonParserConfig* config;
   StringView source;
@@ -76,17 +99,23 @@ struct JsonParser {
   StringSet* intern;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+///
 struct JsonResult {
   JsonValue* root;
   JsonError  error;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+///
 struct JsonParserConfig {
   Allocator* allocator;
   Allocator* intern_allocator;
   bool allow_comments;
 };
 
+////////////////////////////////////////////////////////////////////////////////
+///
 typedef struct JsonValueResult {
   bool ok;
   union {
@@ -95,22 +124,9 @@ typedef struct JsonValueResult {
   };
 } JsonValueResult;
 
-// #define JP_DEFINE_RESULT(Name, T) \
-//     typedef struct { \
-//         bool ok; \
-//         union { \
-//             T         value; \
-//             JsonError error; \
-//         }; \
-//     } Name;
-//
-// JP_DEFINE_RESULT(JsonValueResult, JsonValue);
-// JP_DEFINE_RESULT(JsonObjectResult, JsonObject);
-// JP_DEFINE_RESULT(JsonArrayResult,  JsonArray);
-// JP_DEFINE_RESULT(JsonNumberResult, f64);
-// JP_DEFINE_RESULT(JsonStringResult, StringView);
-// JP_DEFINE_RESULT(JsonBoolResult,   bool);
-
+////////////////////////////////////////////////////////////////////////////////
+/// Function macros
+////////////////////////////////////////////////////////////////////////////////
 #define IS_NULL(value)   ((value)->type == JSON_NULL)
 #define IS_BOOL(value)   ((value)->type == JSON_BOOL)
 #define IS_NUMBER(value) ((value)->type == JSON_NUMBER)
@@ -124,6 +140,9 @@ typedef struct JsonValueResult {
 #define AS_ARRAY(value)  ((value)->as.array)
 #define AS_OBJECT(value) ((value)->as.object)
 
+////////////////////////////////////////////////////////////////////////////////
+/// Function Declarations
+////////////////////////////////////////////////////////////////////////////////
 JsonParserConfig jp_parserConfigInit(Allocator* allocator, Allocator* intern, bool allow_comments);
 JsonParser jp_parserInit(JsonParserConfig* jpc, StringView source);
 JsonValueResult jp_parseJsonObject(JsonParser* jp);
@@ -139,13 +158,18 @@ JsonValue* jp_arrayAt(const JsonValue* array, usize index);
 usize jp_arrayLength(const JsonValue* array);
 
 usize jp_objectCount(const JsonValue* object);
+
+// Retrieve object elements
 JsonValue* jp_objectGet(const JsonValue* object, StringView key);
+JsonValue* jp_objectGetSV(const JsonValue* object, StringView key);
+JsonValue* jp_objectGetString(const JsonValue* object, String key);
+JsonValue* jp_objectGetCharPtr(const JsonValue* object, char* key);
+#define objectGet(o, k) _Generic((k), \
+                          StringView: jp_objectGet, \
+                          String: jp_objectGetString, \
+                          char*: jp_objectGetCharPtr \
+                          )(o, k)
 
 JsonError jp_makeError(JsonParser* jp, JsonErrorCode code, const char* detail);
 
 [[maybe_unused]] void pretend_main(const char* file_name);
-
-// #define JP_TRY(result_expr, ResultType) \
-//   ({ typeof(result_expr) _r = (result_expr); \
-//      if (!_r.ok) return (ResultType){ .ok = false, .error = _r.error }; \
-//      _r.value; })
