@@ -1,6 +1,7 @@
 #pragma once
 
 #include "types.h"
+#include "mem.h"
 #include "string8.h"
 #include <stdbool.h>
 
@@ -64,8 +65,8 @@ typedef struct Profiler Profiler;
 typedef struct ProfBlock ProfBlock;
 
 struct TimeStamp {
-  u64 time_elapsed_exclusive;
-  u64 time_elapsed_inclusive;
+  u64 time_elapsed_exclusive; // Does NOT contain children
+  u64 time_elapsed_inclusive; // Does contain children
   const char* label;
 };
 
@@ -80,11 +81,11 @@ struct ProfBlock {
 struct Profiler {
   u64 start;
   u64 stop;
-  TimeStamp times[4096];
+  TimeStamp times[KiB(4)];
 };
 
 
-#define ProfileBlock(name, label) ProfBlock name = profilerBlockBegin(label, TimeStampIndex++)
+#define ProfileBlockBegin(name, label) ProfBlock name = profilerBlockBegin(label, __COUNTER__+1)
 #define ProfileBlockEnd(name) profilerBlockEnd(&(name));
 
 void profilerInit(Profiler* prof);

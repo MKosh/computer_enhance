@@ -61,7 +61,7 @@ int main(int argc, char* argv[]) {
   if (DEBUG_) printf("Starting %s\n", __FUNCTION__);
 
   profilerBegin(&prof);
-  ProfileBlock(read, "Read Input");
+  ProfileBlockBegin(read, "Read Input");
   JsonParser parser;
   initParser(&parser, String_readFile(file_arg, NULL));
   ProfileBlockEnd(read);
@@ -71,7 +71,7 @@ int main(int argc, char* argv[]) {
 
   if (DEBUG_) printf("File contents:\n%s\n", parser.source.str);
 
-  ProfileBlock(parse, "Parse");
+  ProfileBlockBegin(parse, "Parse");
   if (parseJsonDoc(&parser, &doc)) {
     fprintf(stderr, "Cannot parse file.\n");
   } else {
@@ -88,7 +88,7 @@ int main(int argc, char* argv[]) {
     if (DEBUG_) printf("\nFound: %s\n", pairs_node->name.str);
     if (DEBUG_) printf("\n\n");
 
-    ProfileBlock(Sum, "Sum");
+    ProfileBlockBegin(Sum, "Sum");
     JsonArray* values = getJsonValue(pairs_node->element);
     f64 sum = 0;
     f64 N = 0;
@@ -110,7 +110,7 @@ int main(int argc, char* argv[]) {
     fprintf(stderr, "Error, can't find pairs.\n");
   }
 
-  ProfileBlock(dealloc, "Deallocation");
+  ProfileBlockBegin(dealloc, "Deallocation");
   freeParser(&parser);
   freeJsonDoc(&doc);
   profilerBlockEnd(&dealloc);

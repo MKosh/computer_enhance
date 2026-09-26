@@ -287,6 +287,7 @@ JsonParser jp_parserInit(JsonParserConfig* jpc, StringView source)
 /// Parse a JsonObject and leave jp->at pointing at the first character after the closing '}'
 JsonValueResult jp_parseJsonObject(JsonParser* jp)
 {
+  ProfileBlockBegin(OBJ, "Parse JSON Object");
     JsonValueResult result = { .ok = true };
     JsonObject obj = { 0 };
     JsonFieldNode* head = NULL;
@@ -321,7 +322,9 @@ JsonValueResult jp_parseJsonObject(JsonParser* jp)
         }
 
         // We must be at the start of a key so parse it as a string
+        ProfileBlockBegin(parse_key, "Parse key");
         StringView key = jp_parseJsonKey(jp);
+        ProfileBlockEnd(parse_key);
 
         // Look for a colon to separate the key and value
         consumeWhitespace(jp);
@@ -384,6 +387,7 @@ JsonValueResult jp_parseJsonObject(JsonParser* jp)
 
     // allocator_reset(jp->config->intern_allocator);
     // allocator_destroy(buffer);
+  ProfileBlockEnd(OBJ);
     return result;
 }
 
@@ -391,6 +395,7 @@ JsonValueResult jp_parseJsonObject(JsonParser* jp)
 /// Parse a JsonArray and leave jp->at pointing at the first character after the closing ']'
 JsonValueResult jp_parseJsonArray(JsonParser* jp)
 {
+    ProfileBlockBegin(array_parse, "Parse array");
     JsonValueResult result = { .ok = true };
     JsonArray array = { 0 };
     usize count = 0;
@@ -449,6 +454,7 @@ JsonValueResult jp_parseJsonArray(JsonParser* jp)
 
     if (temp) free(temp);
 
+    ProfileBlockEnd(array_parse);
     return result;
 
 }
@@ -662,12 +668,12 @@ JsonValueResult jp_parseFile(JsonParserConfig* jpc, StringView file)
     Allocator* buf   = fixed_buffer_allocator_create(buffer, KiB(10));
     // Allocator* intern = arena_list_allocator_create(10 * 1024);
 
-    ProfileBlock(read, "Read input");
+    ProfileBlockBegin(read, "Read input");
     String file_contents = String_readFile(file_name, NULL);
     ProfileBlockEnd(read);
 
     JsonParserConfig jpc = jp_parserConfigInit(arena, buf, true);
-    ProfileBlock(parse, "Parse file");
+    ProfileBlockBegin(parse, "Parse file");
     [[maybe_unused]] JsonValueResult root = jp_parseFile(&jpc, sv_create(&file_contents));
     if (root.ok == false) {
         allocator_destroy(arena);
@@ -676,7 +682,7 @@ JsonValueResult jp_parseFile(JsonParserConfig* jpc, StringView file)
     }
     ProfileBlockEnd(parse);
 
-    ProfileBlock(Sum, "Sum");
+    ProfileBlockBegin(Sum, "Sum");
     JsonValue* pairs = jp_objectGet(&root.value, sv_fromLiteral("pairs"));
     usize elements = jp_arrayLength(pairs);
     printf("%ld sets of pairs.\n", elements);
@@ -698,7 +704,7 @@ JsonValueResult jp_parseFile(JsonParserConfig* jpc, StringView file)
     printf("Haversine distance = %g/%g = %g\n", sum, N, sum/N);
     ProfileBlockEnd(Sum);
 
-    ProfileBlock(dealloc, "Deallocation");
+    ProfileBlockBegin(dealloc, "Deallocation");
     allocator_destroy(arena);
     allocator_destroy(buf);
     free(buffer);
