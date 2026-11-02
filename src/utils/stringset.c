@@ -72,7 +72,7 @@ StringView StringSet_tryInsert(StringSet* set, StringView entry)
     link->next = set->buckets[bucket];
     set->buckets[bucket] = link;
     // Allocate space for the backing string and set its value as the input
-    String s = String_alloc(entry.str, entry.len, set->allocator);
+    String s = string_create(entry.str, entry.len, set->allocator);
     link->value = sv_create(s);
     // printf("Added: %.*s\n", (int)link->value.len, link->value.str);
   }

@@ -131,6 +131,6 @@ static void* arena_list_realloc([[maybe_unused]] Allocator* a, [[maybe_unused]] 
 
 static void  arena_list_free([[maybe_unused]] Allocator* a,[[maybe_unused]] void* ptr,[[maybe_unused]] usize size,[[maybe_unused]] usize align)
 {
-  fprintf(stderr, "Error: Function 'free' is not supported for ArenaList allocators.\n");
-  exit(1);
+  // fprintf(stderr, "Error: Function 'free' is not supported for ArenaList allocators.\n");
+  // exit(1);
 }

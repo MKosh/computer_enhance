@@ -9,6 +9,7 @@
 
 #ifdef _WIN32
 
+#error "Windows not supported" 
 
 #else
 
@@ -68,6 +69,8 @@ struct TimeStamp {
   u64 time_elapsed_exclusive; // Does NOT contain children
   u64 time_elapsed_inclusive; // Does contain children
   const char* label;
+  u64 processed_byte_count;
+  u64 page_faults;
 };
 
 struct ProfBlock {
@@ -84,18 +87,22 @@ struct Profiler {
   TimeStamp times[KiB(4)];
 };
 
+// options for the profiler?
+// profilerInit(prof, TIMER | PAGE_FAULTS | BYTES_PROCESSED)
 
-#define ProfileBlockBegin(name, label) ProfBlock name = profilerBlockBegin(label, __COUNTER__+1)
+#define ProfileBlockBegin(name, label) ProfBlock name = profilerBlockBegin(label, __COUNTER__+1, 0)
 #define ProfileBlockEnd(name) profilerBlockEnd(&(name));
+#define ProfileBandwidthBegin(name, label, byte_count) ProfBlock name = profilerBlockBegin(label, __COUNTER__+1, byte_count)
 
 void profilerInit(Profiler* prof);
 void profilerBegin(Profiler* prof);
 void profilerEnd(Profiler* prof);
-ProfBlock profilerBlockBegin(const char* label, u64 index);
+ProfBlock profilerBlockBegin(const char* label, u64 index, u64 byte_count);
 void profilerBlockEnd(ProfBlock* block);
 void profilerEndAndPrint(Profiler* prof);
 void profilerFree(Profiler* prof);
 void printTimeElapsed(u64 total_time, TimeStamp* anchor, u64 freq);
+u64 readOsPageFaultCount(void);
 
 typedef struct Times Times;
 typedef struct Timer Timer;

@@ -10,8 +10,12 @@ add_executable(haversine
   haversine.c
   parser.c
   utils/string8.c
-  utils/metrics.c
+  utils/profiler.c
+  utils/stringset.c
   memory/mem.c
+  memory/arena_list.c
+  memory/fixed_buffer.c
+  memory/gpa.c
 )
 
 target_include_directories(haversine PUBLIC
@@ -28,56 +32,9 @@ target_link_directories(haversine PUBLIC
   ${CMAKE_SOURCE_DIR}/src/memory
 )
 
-target_compile_definitions(haversine PUBLIC
-  "$<$<CONFIG:DEBUG>:DEBUG>"
-)
-
-target_compile_options(haversine PRIVATE
-  -fsanitize=address,leak
-  -static-libsan
-  -fno-omit-frame-pointer
-  -Wall
-  -Wextra
-  -Werror
-)
-
-target_link_options(haversine PRIVATE
-  -fsanitize=address,leak
-  -static-libsan
-  -fno-omit-frame-pointer
-  -lm
-)
-################################################################################
-### Haversine 2
-################################################################################
-add_executable(haversine2
-  haversine2.c
-  parser2.c
-  utils/string8.c
-  utils/metrics.c
-  utils/stringset.c
-  memory/mem.c
-  memory/arena_list.c
-  memory/fixed_buffer.c
-)
-
-target_include_directories(haversine2 PUBLIC
-  ${CMAKE_SOURCE_DIR}
-  ${CMAKE_SOURCE_DIR}/src
-  ${CMAKE_SOURCE_DIR}/src/utils
-  ${CMAKE_SOURCE_DIR}/src/memory
-)
-
-target_link_directories(haversine2 PUBLIC
-  ${CMAKE_SOURCE_DIR}
-  ${CMAKE_SOURCE_DIR}/src
-  ${CMAKE_SOURCE_DIR}/src/utils
-  ${CMAKE_SOURCE_DIR}/src/memory
-)
-
 ####  Debug info flags ####
 # Debug and RelWithDebInfo get debug symbols; Release does not.
-target_compile_options(haversine2 PRIVATE
+target_compile_options(haversine PRIVATE
   $<$<OR:$<CONFIG:Debug>,$<CONFIG:RelWithDebInfo>>:-g -Wall -Wextra -Werror>
 )
 
@@ -85,32 +42,32 @@ target_compile_options(haversine2 PRIVATE
 # Release: full optimization, no debug info.
 # RelWithDebInfo: still optimized (lightly, per CMake convention) but with debug info.
 # Debug: no optimization.
-target_compile_options(haversine2 PRIVATE
+target_compile_options(haversine PRIVATE
     $<$<CONFIG:Debug>:-O0>
     $<$<CONFIG:RelWithDebInfo>:-O2>
     $<$<CONFIG:Release>:-O3>
 )
 
 #### Link math library ###
-target_link_options(haversine2 PRIVATE
+target_link_options(haversine PRIVATE
     $<$<CONFIG:Debug>:-lm>
     $<$<CONFIG:RelWithDebInfo>:-lm>
     $<$<CONFIG:Release>:-lm>
 )
 
 #### AddressSanitizer: Debug only ###
-target_compile_options(haversine2 PRIVATE
+target_compile_options(haversine PRIVATE
     $<$<CONFIG:Debug>:-fsanitize=address -static-libasan -fno-omit-frame-pointer>
 )
 
-target_link_options(haversine2 PRIVATE
+target_link_options(haversine PRIVATE
     $<$<CONFIG:Debug>:-fsanitize=address -static-libasan>
 )
 
 #### NDEBUG handling ###
 # Release and RelWithDebInfo typically define NDEBUG to strip asserts;
 # Debug should NOT define it.
-target_compile_definitions(haversine2 PRIVATE
+target_compile_definitions(haversine PRIVATE
     $<$<CONFIG:Release>:NDEBUG>
     $<$<CONFIG:RelWithDebInfo>:NDEBUG>
 )
@@ -127,6 +84,7 @@ add_executable(test
   memory/mem.c
   memory/arena_list.c
   memory/fixed_buffer.c
+  memory/gpa.c
 )
 
 target_include_directories(test PUBLIC

@@ -1,10 +1,16 @@
+
+#if _WIN32
+#error "Windows not supported" 
+#else
+
 #include "metrics.h"
 #include "mem.h"
 #include <string.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <assert.h>
-
+#include <x86intrin.h>
+#include <sys/resource.h>
 ////////////////////////////////////////////////////////////////////////////////
 /// Static globals
 static const u64 microseconds = 1000000;
@@ -49,7 +55,7 @@ void profilerEnd(Profiler* prof)
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
-ProfBlock profilerBlockBegin([[maybe_unused]]const char* label, u64 index)
+ProfBlock profilerBlockBegin([[maybe_unused]]const char* label, u64 index, u64 byte_count)
 {
   // if (prof->index + 1 > prof->capacity) {
   //   prof->capacity *= 2;
@@ -74,6 +80,8 @@ ProfBlock profilerBlockBegin([[maybe_unused]]const char* label, u64 index)
 
   TimeStamp* anchor = prof.times + block.StampIndex;
   block.OldTSCElapsedInclusive = anchor->time_elapsed_inclusive;
+  anchor->processed_byte_count += byte_count;
+  anchor->page_faults = readOsPageFaultCount();
 
   GlobalProfParent = index;
   block.StartTSC = readCpuTimer();
@@ -95,6 +103,7 @@ void profilerBlockEnd(ProfBlock* block)
   parent->time_elapsed_exclusive -= elapsed;
   anchor->time_elapsed_exclusive += elapsed;
   anchor->time_elapsed_inclusive = block->OldTSCElapsedInclusive + elapsed;
+  anchor->page_faults = readOsPageFaultCount();
 
   anchor->label = block->label;
 }
@@ -107,8 +116,23 @@ void printTimeElapsed(u64 total_time, TimeStamp* anchor, u64 freq)
     f64 percent_with_children = 100.0 * ((f64)anchor->time_elapsed_inclusive / (f64)total_time);
     printf(", %.2f%% w/ children", percent_with_children);
   }
+  printf(")");
 
-  printf(")\n");
+  if (anchor->processed_byte_count) {
+    f64 megabyte = 1024.0f * 1024.0f;
+    f64 gigabyte = megabyte * 1024.0f;
+
+    f64 seconds = (f64)anchor->time_elapsed_inclusive / (f64)freq;
+    f64 bytes_per_second = (f64)anchor->processed_byte_count / seconds;
+    f64 megabytes = (f64)anchor->processed_byte_count / (f64)megabyte;
+    f64 gigabytes_per_second = bytes_per_second / gigabyte;
+
+    printf("  %.3fmb at %.2fgb/s", megabytes, gigabytes_per_second);
+  }
+  if (anchor->page_faults) {
+    printf("  %ld page faults", anchor->page_faults);
+  }
+  printf("\n");
 }
 ////////////////////////////////////////////////////////////////////////////////
 ///
@@ -282,3 +306,21 @@ u64 estimateCpuFreq(void)
 
   return cpu_freq;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+///
+u64 readOsPageFaultCount(void)
+{
+  struct rusage usage = {};
+  if (getrusage(RUSAGE_SELF, &usage) == -1) {
+    // failure
+    fprintf(stderr, "Error: getrusage failed.\n");
+    return 0;
+  }
+
+  // ru_minflt the number of page faults serviced without any I/O activity
+  // ru_majflt the number of page faults serviced that required I/O activity
+  u64 result = usage.ru_minflt + usage.ru_majflt;
+  return result;
+}
+#endif

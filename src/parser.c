@@ -1,834 +1,760 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdbool.h>
+#include "parser.h"
+#include "types.h"
+#include "string8.h"
+#include "allocator.h"
+#include "arena_list.h"
+#include "fixed_buffer.h"
+#include "gpa.h"
+// #include "metrics.h"
+#include "profiler.h"
+#include "haversine.h"
+#include "stringset.h"
+
 #include <math.h>
 
-#include "types.h"
-#include "json.h"
-#include "parser.h"
-#include "metrics.h"
-#include "string8.h"
+/// 
+/// TODO:
+///   - [ ] Add tables for timers (and possibly values?)
+///   - [x] Add timers
+///   - [x] Add functions to retrieve values
+///
 
-////////////////////////////////////////////////////////////////////////////////
-/// Global across Translation Units
-extern i32 DEBUG_;
 extern Profiler prof;
-extern u64 TimeStampIndex;
-/// Global across Translation Units
-////////////////////////////////////////////////////////////////////////////////
+// extern u64 TimeStampIndex;
+// extern u64 GlobalProfParent;
+
+[[maybe_unused]] static const char* err_messages[] = {
+    "Unexpected token",
+    "Unexpected end",
+    "Invalid escape",
+    "Invalid unicode",
+    "Number overflow",
+    "Nesting limit",
+    "Out of memory"
+};
+
+typedef struct JsonFieldNode JsonFieldNode;
+typedef struct JsonValueNode JsonValueNode;
+
+struct JsonFieldNode {
+    JsonField field;
+    JsonFieldNode* next;
+};
+
+struct JsonValueNode {
+    JsonValue value;
+    JsonValueNode* next;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 ///
-JsonObject* getJsonObject(JsonValue* value)
+String String_readFile(const char* filename, Allocator* allocator)
 {
-  if (value->type != JSON_OBJECT) {
-    return NULL;
-  }
-  return value->as.obj;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///
-// JsonMember* getJsonMember(JsonObject* obj);
-
-////////////////////////////////////////////////////////////////////////////////
-///
-JsonMember* getMember(JsonElement* root, const char* name)
-{
-  if (DEBUG_) printf("Starting %s\n", __FUNCTION__);
-  if (root == NULL) {
-    return NULL;
+  profileBlockBegin(read_file, "Open and read file", allocator);
+  String ret;
+  FILE* file = fopen(filename, "r");
+  if (file == NULL) {
+    fprintf(stderr, "Error opening file.\n");
+    exit(74);
   }
 
-  JsonMember* ret = NULL;
-  JsonMember* member;
-  JsonObject* obj;
-  for (JsonElement* e = root; e != NULL; e = e->next) {
-    obj = getJsonObject(e->value);
-    if (obj == NULL) return NULL;
-    member = obj->members;
-    while (member != NULL) {
-      if (strcmp(name, member->name.str) == 0) {
-        ret = member;
-        goto found;
-      } else {
-        member = member->next;
-      }
-    }
+  printf("Reading file %s\n", filename);
+
+  fseek(file, 0L, SEEK_END);
+  usize file_size = ftell(file);
+  file_size += 1; // Add an extra byte for the null terminator
+  rewind(file);
+  
+  char* buffer = allocator ? allocator_alloc(allocator, file_size, alignof(u8)) :  malloc(file_size);
+  if (buffer == NULL) {
+    fprintf(stderr, "Not enough memory to read \"%s\".\n", filename);
+    exit(74);
   }
 
-found:
-  if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
+  profileBandwidthBegin(read, "fread file", file_size, allocator);
+  size_t bytes_read = fread(buffer, sizeof(char), file_size - 1, file);
+  profileBlockEnd(read);
+  if (bytes_read < file_size - 1) {
+    fprintf(stderr, "Could not read file \"%s\".\n", filename);
+    exit(74);
+  }
+  buffer[file_size - 1] = '\0';
+
+  fclose(file);
+  ret.str = buffer;
+  ret.len = file_size;
+  profileBlockEnd(read_file);
   return ret;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-///
-f64 getJsonNumber(JsonElement* element, const char* name)
+/// Function Prototypes
+static bool isAtEnd(JsonParser* jp);
+void pretend_main(const char* file_name);
+static char peekNext(JsonParser* jp);
+static char peek(JsonParser* jp);
+static void advance(JsonParser* jp);
+static void advanceAndConsumeWhitespace(JsonParser* jp);
+static char advanceAndPeek(JsonParser* jp);
+static char peekAndAdvance(JsonParser* jp);
+static void advanceBy(JsonParser* jp, size_t n);
+static bool isDigit(char c);
+static bool isAlpha(char c);
+static void consumeWhitespace(JsonParser* jp);
+/// Function Prototypes
+////////////////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////////////////
+/// Check if we're at the end of the file
+static bool isAtEnd(JsonParser* jp)
 {
-  if (element == NULL) {
-    fprintf(stderr, "NULL json element to json number function.\n");
-    return NAN;
-  }
-
-  if (element->value->type != JSON_OBJECT) {
-    fprintf(stderr, "Invalid value type\n");
-    return NAN;
-  }
-
-  JsonObject* obj = element->value->as.obj;
-  for (JsonMember* member = obj->members; member != NULL; member = member->next) {
-    if (strcmp(name, member->name.str) == 0) {
-      if (member->element->value->type == JSON_NUMBER) {
-        return member->element->value->as.number;
-      } else {
-        fprintf(stderr, "Found member named '%s', but it was not a number as expected.\n", member->name.str);
-        return NAN;
-      }
-    }
-  }
-
-  fprintf(stderr, "No member named '%s' found.\n", name);
-  return NAN;
+    return (jp->at >= jp->source.len);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-///
-void* getJsonValue(JsonElement* element)
-{
-  if (element == NULL) {
-    return NULL;
-  }
-  void* ret;
-
-  switch (element->value->type) {
-    case JSON_BOOL: {
-      ret = &element->value->as.Bool;
-      break;
+/// Look at the next character in the file, but don't advance
+[[maybe_unused]] static char peekNext(JsonParser* jp) {
+    if (jp->at + 1 >= jp->source.len) {
+        return EOF;
     }
-    case JSON_NUMBER: {
-      ret = &element->value->as.number;
-      break;
-    }
-    case JSON_STRING: {
-      ret = &element->value->as.string;
-      break;
-    }
-    case JSON_ARRAY: {
-      ret = element->value->as.array;
-      break;
-    }
-    case JSON_OBJECT: {
-      ret = element->value->as.obj;
-      break;
-    }
-  }
-
-  if (ret == NULL) {
-    fprintf(stderr, "Error, returning NULL json value.\n");
-  }
-  return ret;
+    return jp->source.str[jp->at + 1];
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-///
-void freeJsonDoc(JsonDocument* doc)
+/// Look at the current character in the file, but don't advance
+static char peek(JsonParser* jp)
 {
-  if (DEBUG_) printf("Starting %s\n", __FUNCTION__);
-  if (doc == NULL) {
-    fprintf(stderr, "Error, trying to free a NULL document.\n");
-    return;
-  }
-
-  freeJsonElements(doc->root);
-  
-  // free(doc);
-  // doc = NULL;
-  if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
+    return jp->source.str[jp->at];
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-///
-void freeJsonElements(JsonElement* elements)
+/// Advance to the next character in the file 
+static void advance(JsonParser* jp)
 {
-  if (DEBUG_) printf("Starting %s\n", __FUNCTION__);
-  if (elements == NULL) {
-    fprintf(stderr, "Error, freeing NULL element.\n");
-    return;
-  }
-
-  JsonElement* temp;
-  for (JsonElement* e = elements; e != NULL;) {
-    temp = e->next;
-    freeJsonValue(e->value);
-    free(e);
-    e = temp;
-    // e = e->next;
-    // free(last);
-  }
-
-  // elements = NULL;
-
-  if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
+    jp->at++;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-///
-void freeJsonValue(JsonValue* value)
+/// Advance to the next character, then consume whitespace
+static void advanceAndConsumeWhitespace(JsonParser* jp)
 {
-  if (DEBUG_) printf("Starting %s\n", __FUNCTION__);
-  if (value == NULL) {
-    fprintf(stderr, "Error, freeing NULL value.\n");
-    return;
-  }
-
-  switch (value->type) {
-    case JSON_BOOL:
-    case JSON_NUMBER:
-      if (DEBUG_) printf("Freeing number: %g\n", value->as.number);
-      break;
-    case JSON_STRING: {
-      if (DEBUG_) printf("Freeing string: %s\n", value->as.string.str);
-      String_free(&value->as.string, NULL);
-      break;
-    }
-    case JSON_ARRAY: {
-      freeJsonArray(value->as.array);
-      break;
-    }
-    case JSON_OBJECT: {
-      freeJsonObject(value->as.obj);
-      break;
-    }
-  }
-
-  free(value);
-  value = NULL;
-
-  if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///
-void freeJsonArray(JsonArray* array)
-{
-  if (DEBUG_) printf("Starting %s\n", __FUNCTION__);
-  if (array == NULL) {
-    return;
-  }
-  freeJsonElements(array->elements);
-  free(array);
-  array = NULL;
-  if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///
-void freeJsonMember(JsonMember* member)
-{
-  if (DEBUG_) printf("Starting %s\n", __FUNCTION__);
-  if (member == NULL) {
-    return;
-  }
-
-  if (DEBUG_) printf("Freeing member: %s\n", member->name.str);
-  String_free(&member->name, NULL);
-  freeJsonElements(member->element);
-  member->next = NULL;
-  if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///
-void freeJsonObject(JsonObject* object)
-{
-  if (DEBUG_) printf("Starting %s\n", __FUNCTION__);
-  if (object == NULL) {
-    return;
-  }
-
-  JsonMember* temp;
-  for (JsonMember* mem = object->members; mem != NULL;) {
-    temp = mem->next;
-    freeJsonMember(mem);
-    free(mem);
-    mem = temp;
-  }
-  free(object);
-  object = NULL;
-  if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///
-void printJsonArray(JsonArray* array)
-{
-  if (DEBUG_) printf("Starting %s\n", __FUNCTION__);
-  if (array == NULL) {
-    return;
-  }
-
-  printf("[");
-  // for (JsonElement* element = array->elements; element != NULL; element = element->next) {
-  printJsonElements(array->elements);
-  // }
-
-  printf("]");
-  if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
-  fflush(stdout);
-  // exit(EXIT_FAILURE);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///
-void printJsonObject(JsonObject* obj)
-{ 
-  if (DEBUG_) printf("Starting %s\n", __FUNCTION__);
-  if (obj == NULL) {
-    return;
-  }
-
-  // bool first = true;
-
-  printf("{");
-  for (JsonMember* member = obj->members; member != NULL; member = member->next) {
-    printf("\"");
-    String_println(member->name);
-    printf("\"");
-    printf(": ");
-    printJsonElement(member->element);
-    if (member->next != NULL) {
-      printf(", ");
-    }
-  }
-  printf("}");
-  fflush(stdout);
-  // if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
-  // exit(EXIT_FAILURE);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///
-void printJsonValue(JsonValue* value)
-{
-  if (DEBUG_) printf("Starting %s\n", __FUNCTION__);
-  if (value == NULL) {
-    return;
-  }
-
-  switch (value->type) {
-    case JSON_BOOL: {
-      if (DEBUG_) printf("Printing JSON_BOOL\n");
-      if (value->as.Bool) {
-        printf("true");
-      } else {
-        printf("false");
-      }
-      break;
-    }
-    case JSON_NUMBER: {
-      if (DEBUG_) printf("Printing JSON_NUMBER\n");
-      printf("%g", value->as.number);
-      break;
-    }
-    case JSON_STRING: {
-      if (DEBUG_) printf("Printing JSON_STRING\n");
-      printf("%s", value->as.string.str);
-      break;
-    }
-    case JSON_OBJECT: {
-      if (DEBUG_) printf("Printing JSON_OBJECT\n");
-      printJsonObject(value->as.obj);
-      break;
-    }
-    case JSON_ARRAY: {
-      if (DEBUG_) printf("Printing JSON_ARRAY\n");
-      printJsonArray(value->as.array);
-      break;
-    }
-  }
-
-  fflush(stdout);
-  // exit(EXIT_FAILURE);
-  if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
-}
-
-
-////////////////////////////////////////////////////////////////////////////////
-///
-void printJsonElements(JsonElement* element)
-{
-  if (DEBUG_) printf("Starting %s\n", __FUNCTION__);
-  if (element == NULL) {
-    return;
-  }
-
-  for (JsonElement* e = element; e != NULL; e = e->next) {
-    // if (DEBUG_) printf("Printing element!\n");
-    printJsonValue(e->value);
-    if (e->next != NULL) printf(",\n"); 
-  }
-  if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///
-void printJsonElement(JsonElement* element)
-{
-  if (DEBUG_) printf("Starting %s\n", __FUNCTION__);
-  if (element == NULL) {
-    return;
-  }
-
-  for (JsonElement* e = element; e != NULL; e = element->next) {
-    // if (DEBUG_) printf("Printing element!\n");
-    printJsonValue(e->value);
-  }
-  if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///
-void printJsonDoc(JsonDocument* doc)
-{
-  if (DEBUG_) printf("Starting %s\n", __FUNCTION__);
-  if (doc != NULL && doc->root != NULL) {
-    printJsonElement(doc->root);
-  }
-  if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///
-JsonObject* parseJsonObject(JsonParser* parser)
-{
-  if (DEBUG_) printf("Starting %s\n", __FUNCTION__);
-  if (DEBUG_) printf("Parsing starting on char: %c\n", peek(parser));
-  JsonObject* object = (JsonObject*)malloc(sizeof(JsonObject));
-  object->members = NULL;
-  JsonMember* temp = NULL;
-
-  char buffer[256];
-  size_t index = 0;
-
-  // Look for object with no members
-  advance(parser);
-  if (DEBUG_) printf("After advancing, on char: %c\n", peek(parser));
-  consumeWhitespace(parser);
-  if (peek(parser) == '}') {
-    object->members = NULL;
-    return object;
-  }
-
-  while (true) {
-    consumeWhitespace(parser);
-
-    // Look for a string
-    if (peek(parser) == '"') {
-      advance(parser);
-
-      index = 0;
-      
-      // Parse member name
-      while (peek(parser) != '"') {
-        buffer[index++] = advance(parser);
-        // Name missing closing quote.
-        if (index >= 255) {
-          fprintf(stderr, "Error, expected closing \" in member name.\n");
-          parser->had_error = true;
-          object = NULL;
-          goto end;
+    jp->at++;
+    while (!isAtEnd(jp)) {
+        switch(peek(jp)) {
+            case ' ':
+            case '\t':
+            case '\r': {
+                           jp->at++;
+                           break;
+                       }
+            case '\n': {
+                           jp->at++;
+                           jp->line++;
+                           break;
+                       }
+            default:
+                       return;
         }
-      }
+    }
+}
 
-      buffer[index] = '\0';
-      advance(parser);
+////////////////////////////////////////////////////////////////////////////////
+/// Advance one character then return that new character
+[[maybe_unused]] static char advanceAndPeek(JsonParser* jp)
+{
+    return jp->source.str[++(jp->at)];
+}
 
-      // Make sure there's a ':' that seperates the name and element
-      consumeWhitespace(parser);
-      if (peek(parser) != ':') {
-        fprintf(stderr, "Error, expected ':'\n");
-        parser->had_error = true;
-        object = NULL;
-        break;
-      }
-      advance(parser);
-      consumeWhitespace(parser);
+////////////////////////////////////////////////////////////////////////////////
+/// Return the current character then advance to the next one
+[[maybe_unused]] static char peekAndAdvance(JsonParser* jp)
+{
+    return jp->source.str[(jp->at)++];
+}
 
-      JsonMember* new_member = (JsonMember*)malloc(sizeof(JsonMember));
+////////////////////////////////////////////////////////////////////////////////
+/// Advance n characters ahead if we can, otherwise go as far as possible
+static void advanceBy(JsonParser* jp, size_t n)
+{
+    if (jp->at + n > jp->source.len) {
+        jp->at += jp->source.len - jp->at;
+    } else {
+        jp->at += n;
+    }
+}
 
-      new_member->name = (String){ .str = strdup(buffer), .len = index };
-      new_member->element = parseJsonElement(parser);
-      new_member->next = NULL;
+////////////////////////////////////////////////////////////////////////////////
+/// Check if a character is a digit
+[[maybe_unused]] static bool isDigit(char c)
+{
+    return c >= '0' && c <= '9';
+}
 
-      // if (object->members == NULL) {
-      //   object->members = new_member;
-      //   temp = object->members;
-      // } else {
-      //   temp->next = new_member;
-      //   temp = new_member;
-      // }
-      if (object->members == NULL) {
-        object->members = new_member;
-      } else {
-        temp = object->members;
-        while (temp->next != NULL) {
-          temp = temp->next;
+////////////////////////////////////////////////////////////////////////////////
+/// Check if a character is AlphaNumeric
+[[maybe_unused]] static bool isAlpha(char c)
+{
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Skip over whitespace
+static void consumeWhitespace(JsonParser* jp)
+{
+    while (!isAtEnd(jp)) {
+        switch(peek(jp)) {
+            case ' ':
+            case '\t':
+            case '\r': {
+                           jp->at++;
+                           break;
+                       }
+            case '\n': {
+                           jp->at++;
+                           jp->line++;
+                           break;
+                       }
+            default:
+                       return;
         }
-        temp->next = new_member;
-      }
-
-      consumeWhitespace(parser);
-      if (peek(parser) == ',') {
-        advance(parser);
-        continue;
-      } else if (peek(parser) == '}') {
-        advance(parser);
-        break;
-      }
-
-    } else {
-      fprintf(stderr, "Error, expected '\"'\n");
-      fprintf(stderr, "Failed on char: '%c'", peek(parser));
-      parser->had_error = true;
-      object = NULL;
-      break;
-      // exit(EXIT_FAILURE);
     }
-
-  }
-
-end:
-  if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
-  return object;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-///
-JsonArray* parseJsonArray(JsonParser* parser)
+JsonValue* jp_arrayAt(const JsonValue* array, usize index)
 {
-  if (DEBUG_) printf("Starting %s\n", __FUNCTION__);
-  JsonArray* array = (JsonArray*)malloc(sizeof(JsonArray));
-  array->elements = NULL;
+    assert(array && "nullptr as array");
+    // if (array) { }
+    // if (index) { }
+    if (!IS_ARRAY(array)) {
+        fprintf(stderr, "Error, value is not an array\n");
+        return 0;
+    }
 
-  // JsonElement* temp = (JsonElement*)malloc(sizeof(JsonElement));
-  JsonElement* temp;
+    assert(index <= AS_ARRAY(array).count);
 
-  if (array == NULL) {
-    fprintf(stderr, "Error allocating memory for array element.\n");
-    parser->had_error = true;
+    return &(AS_ARRAY(array).items[index]);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Get the number of values in the JSON array
+usize jp_arrayLength(const JsonValue* array)
+{
+    assert(array && "nullptr as array");
+    if (!IS_ARRAY(array)) {
+        fprintf(stderr, "Error, value is not an array\n");
+        return 0;
+    }
+
+    return AS_ARRAY(array).count;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Get the number of fields in the JSON object
+usize jp_objectCount(const JsonValue* object)
+{
+    assert(object && "nullptr as object");
+    if (!IS_OBJECT(object)) {
+        fprintf(stderr, "Error, value is not an object\n");
+        fprintf(stderr, "  Value is type: %d\n", object->type);
+        return 0;
+    }
+
+    return AS_OBJECT(object).count;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Retrieve the JSON value with the corresponding key
+JsonValue* jp_objectGet(const JsonValue* object, StringView key)
+{
+    assert(object && "nullptr as object");
+    if (!IS_OBJECT(object)) {
+        fprintf(stderr, "Error, value is not object\n");
+        fprintf(stderr, "  Value is type: %d\n", object->type);
+        return NULL;
+    }
+
+    usize count = jp_objectCount(object);
+    for (usize i = 0; i < count; ++i) {
+        JsonField* field = &AS_OBJECT(object).fields[i];
+        if (strncmp(key.str, field->key.str, key.len) == 0) {
+            return field->value;
+        }
+    }
+
+    fprintf(stderr, "Couldn't find key %.*s\n", (int)key.len, key.str);
     return NULL;
-  }
+}
 
-  for (;;) {
-    advance(parser);
-    consumeWhitespace(parser);
-    if (DEBUG_) printf("Current char: parser[%ld] = %c\n", parser->at, peek(parser));
-    if (peek(parser) == ']') {
-      break;
-      // return array;
-    }
-    
-    JsonElement* new_element = parseJsonElement(parser);
-
-    if (array->elements == NULL) {
-      array->elements = new_element;
-      temp = array->elements;
-    } else {
-      // temp = array->elements;
-      while (temp->next != NULL) { // Hottest path?
-        temp = temp->next; //hottest path?
-      }
-      temp->next = new_element;
-      // temp->next = new_element;
-      temp = new_element;
+////////////////////////////////////////////////////////////////////////////////
+/// Retrieve the JSON value with the corresponding key
+JsonValue* jp_objectGetCharPtr(const JsonValue* object, char* key)
+{
+    assert(object && "nullptr as object");
+    if (!IS_OBJECT(object)) {
+        fprintf(stderr, "Error, value is not object\n");
+        fprintf(stderr, "  Value is type: %d\n", object->type);
+        return NULL;
     }
 
-    consumeWhitespace(parser);
-    if (peek(parser) == ',') {
-      continue;
-    } else if (peek(parser) == ']') {
-      advance(parser);
-      break;
+    usize len = strlen(key);
+    usize count = jp_objectCount(object);
+    for (usize i = 0; i < count; ++i) {
+        JsonField* field = &AS_OBJECT(object).fields[i];
+        if (strncmp(key, field->key.str, len) == 0) {
+            return field->value;
+        }
     }
 
-   }
-
-  // free(temp);
-  // temp = NULL;
-  if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
-  return array;
+    fprintf(stderr, "Couldn't find key %.*s\n", (int)len, key);
+    return NULL;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-///
-String parseJsonString(JsonParser* parser)
+/// Initialize the parser config
+JsonParserConfig jp_parserConfigInit(Allocator* allocator, Allocator* intern, bool allow_comments)
 {
-  String string = { .str = NULL, .len = 0};
-  advance(parser); // Advance off of the starting quotation mark.
-
-  // Keep track of where the string starts to fill the data buffer later.
-  u64 start = parser->at;
-  while(peek(parser) != '"') {
-    string.len++;
-    advance(parser);
-  }
-  string.len++; // Don't forget space for the null terminator.
-
-  string.str = malloc(sizeof(char)*string.len);
-
-  parser->at = start;
-
-  for (u64 i = 0; i < string.len - 1; ++i) {
-    string.str[i] = advance(parser);
-  }
-  string.str[string.len - 1] = '\0';
-
-  consumeWhitespace(parser);
-  advance(parser);
-
-  return string;
+    return (JsonParserConfig){.allocator = allocator, .intern_allocator = intern, .allow_comments = allow_comments};
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-///
-f64 parseJsonNumber(JsonParser* parser)
+/// Initialize the parser itself
+JsonParser jp_parserInit(JsonParserConfig* jpc, StringView source)
 {
-  f64 number;
-  char buffer[256];
-  size_t index = 0;
-  
-  while (isDigit(peek(parser)) || peek(parser) == '.' || peek(parser) == '-') {
-    buffer[index++] = advance(parser);
-  }
-  buffer[index] = '\0';
-  number = atof(buffer);
-  if (isnan(number)) {
-    fprintf(stderr, "Error parsing number, got NAN.\n");
-    parser->had_error = true;
-  }
-
-  return number;
+    i32 status = 0;
+    StringSet* set = StringSet_create(509, jpc->intern_allocator, &status);
+    return (JsonParser){.config = jpc, .source = source, .at = 0, .line = 1, .had_error = false, .intern = set };
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-///
-JsonValue* parseJsonValue(JsonParser* parser)
+/// Parse a JsonObject and leave jp->at pointing at the first character after the closing '}'
+JsonValueResult jp_parseJsonObject(JsonParser* jp)
 {
-  if (DEBUG_) printf("Starting %s\n", __FUNCTION__);
-  if (DEBUG_) printf("Source at: parse[%ld] = %c\n", parser->at, peek(parser));
-  JsonValue* value = (JsonValue*)malloc(sizeof(JsonValue));
-  switch (peek(parser)) {
-    case '{': {
-      value->type = JSON_OBJECT;
-      value->as.obj = parseJsonObject(parser);
-      break;
+  profileBlockBegin(OBJ, "Parse JSON Object");
+    JsonValueResult result = { .ok = true };
+    JsonObject obj = { 0 };
+    JsonFieldNode* head = NULL;
+    JsonFieldNode* tail = NULL;
+    usize count = 0;
+
+    // Advance off of the opening '{'
+    advanceAndConsumeWhitespace(jp);
+
+    // Check for empty object
+    if (peek(jp) == '}') {
+        advance(jp);
+        result.value.type = JSON_OBJECT;
+        result.value.as.object = obj;
+        return result;
+    } 
+
+    // TODO: Test both with and without a local arena allocator for building the
+    // JsonFieldNode linked list:
+    u8 buf[4096];
+    FixedBufferAllocator fba;
+    fixed_buffer_allocator_init(&fba, buf, 4096);
+    Allocator* allocator = &fba.base;
+
+    while (!isAtEnd(jp)) {
+        // Look for a string to denote the start of a key
+        if ((peek(jp) != '"')) {
+            // Error the field should have a key
+            result.ok = false;
+            result.error = jp_makeError(jp, JSON_ERROR_UNEXPECTED_TOKEN, "expected opening '\"'");
+            break;
+        }
+
+        // We must be at the start of a key so parse it as a string
+        profileBlockBegin(parse_key, "Parse key");
+        StringView key = jp_parseJsonKey(jp);
+        profileBlockEnd(parse_key);
+
+        // Look for a colon to separate the key and value
+        consumeWhitespace(jp);
+        if (peek(jp) != ':') {
+            result.ok = false;
+            result.error = jp_makeError(jp, JSON_ERROR_UNEXPECTED_TOKEN, "expected ':'");
+            break;
+        }
+
+        // Advance off of the colon and consume whitespace up to the start of the value
+        advanceAndConsumeWhitespace(jp);
+
+        JsonValueResult value = { 0 };
+
+        // Parse the field's value
+        value = jp_parseJsonValue(jp);
+        if (value.ok == false) {
+            result = value;
+            break;
+        }
+
+        // Store the field in a new node
+        JsonFieldNode* node = allocator_new(allocator, JsonFieldNode);
+        node->field.key = key;
+        node->field.value = allocator_new(jp->config->allocator, JsonValue);
+        *node->field.value = value.value;
+        node->next = NULL;
+
+        if (tail) tail->next = node; 
+        else head = node;
+        tail = node;
+        count++;
+
+        // Consume whitespace after the value and look for a comma to know if the loop
+        // should continue
+        consumeWhitespace(jp);
+        if (peek(jp) == ',') {
+            advanceAndConsumeWhitespace(jp);
+            continue;
+        }
+        if (peek(jp) == '}') {
+            // The object ended, move forward and stop parsing this object
+            advance(jp);
+            break;
+        }
     }
-    case '[': {
-      value->type = JSON_ARRAY;
-      value->as.array = parseJsonArray(parser);
-      break;
+
+    // Flatten the linked list into an array
+    if (result.ok == true) {
+        obj.fields = allocator_alloc(jp->config->allocator, count * sizeof(JsonField), alignof(JsonField));
+        JsonFieldNode* current = head;
+        for (usize i = 0; i < count; i++) {
+            obj.fields[i] = current->field;
+            current = current->next;
+        }
+        obj.count = count;
+        result.value.type = JSON_OBJECT;
+        result.value.as.object = obj;
     }
-    case '"': {
-      value->type = JSON_STRING;
-      value->as.string = parseJsonString(parser);
-      break;
+
+    // allocator_reset(jp->config->intern_allocator);
+    // allocator_destroy(buffer);
+  profileBlockEnd(OBJ);
+    return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Parse a JsonArray and leave jp->at pointing at the first character after the closing ']'
+JsonValueResult jp_parseJsonArray(JsonParser* jp)
+{
+    profileBlockBegin(array_parse, "Parse array");
+    JsonValueResult result = { .ok = true };
+    JsonArray array = { 0 };
+    usize count = 0;
+
+    // Advance off of the starting '['
+    advanceAndConsumeWhitespace(jp);
+
+    // Check for an empty array
+    if (peek(jp) == ']') {
+        result.value = (JsonValue){ .type = JSON_ARRAY, .as.array = array};
+        return result;
     }
-    case '-':
-    case '0':
-    case '1':
-    case '2':
-    case '3':
-    case '4':
-    case '5':
-    case '6':
-    case '7':
-    case '8':
-    case '9': {
-      value->type = JSON_NUMBER;
-      value->as.number = parseJsonNumber(parser);
-      break;
+
+    // Allocate space for the JsonArray values dynamically
+    usize capacity = 32;
+    JsonValue* temp = malloc(sizeof(JsonValue) * capacity);
+
+    while (!isAtEnd(jp)) {
+        JsonValueResult value = jp_parseJsonValue(jp);
+        if (value.ok == false) {
+            result.ok = false;
+            result.error = value.error;
+            break;
+        }
+
+        if (count >= capacity) {
+            capacity *= 2;
+            temp = realloc(temp, sizeof(JsonValue) * capacity);
+        }
+
+        temp[count++] = value.value;
+
+        consumeWhitespace(jp);
+        if (peek(jp) == ']') {
+            advance(jp);
+            break;
+        }
+        if (peek(jp) == ',') {
+            advanceAndConsumeWhitespace(jp);
+            // count++;
+            continue;
+        } else {
+            result.ok = false;
+            result.error = jp_makeError(jp, JSON_ERROR_UNEXPECTED_TOKEN, "expected ','");
+            break;
+        }
     }
-    case 't': {
-      value->type = JSON_BOOL;
-      value->as.Bool = true;
-      break;
+
+    if (result.ok == true) {
+        array.count = count;
+        array.items = allocator_alloc(jp->config->allocator, count * sizeof(JsonValue), alignof(JsonValue));
+        memcpy(array.items, temp, count * sizeof(JsonValue));
+        result.value.type = JSON_ARRAY;
+        result.value.as.array = array;
     }
-    case 'f': {
-      value->type = JSON_BOOL;
-      value->as.Bool = false;
-      break;
+
+    if (temp) free(temp);
+
+    profileBlockEnd(array_parse);
+    return result;
+
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Parse a JsonNumber and leave jp->at pointing at the first character after the last digit
+JsonValueResult jp_parseJsonNumber(JsonParser* jp)
+{
+    f64 number;
+    JsonValueResult result = { .ok = true };
+
+    const char* start = &jp->source.str[jp->at];
+    char* end = NULL;
+    number = strtod(start, &end);
+
+    if (end == start) {
+        result.ok = false;
+        result.error = jp_makeError(jp, JSON_ERROR_UNEXPECTED_TOKEN, "No valid numbers to parse.");
     }
-  }
-  if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
-  return value;
-}
 
-////////////////////////////////////////////////////////////////////////////////
-///
-JsonElement* parseJsonElement(JsonParser* parser)
-{
-  if (DEBUG_) printf("Starting %s\n", __FUNCTION__);
-  JsonElement* element = malloc(sizeof(JsonElement));
-
-  consumeWhitespace(parser);
-  element->value = parseJsonValue(parser);
-  element->next = NULL;
-    
-  // If there's an error, set had_error to true and probably return a nullptr
-  // parser->had_error = true;
-  // element = NULL;
-  if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
-  return element;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-/// Not used?
-JsonElement* parseElement(JsonParser* parser)
-{
-  if (DEBUG_) printf("Starting %s\n", __FUNCTION__);
-  JsonElement* element = malloc(sizeof(JsonElement));
-
-  while (parser->at < parser->source.len - 1) {
-    consumeWhitespace(parser);
-    element->value = parseJsonValue(parser);
-  }
-  // If there's an error, set had_error to true and probably return a nullptr
-  // parser->had_error = true;
-  // element = NULL;
-  if (DEBUG_) printf("Finished %s\n", __FUNCTION__);
-  return element;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///
-JsonDocument createJsonDocument()
-{
-  return (JsonDocument){ .root = NULL};
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///
-void initJsonDocument(JsonDocument* doc)
-{
-  doc->root = NULL;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///
-JsonElement* parseJsonRoot(JsonParser* parser)
-{
-  JsonElement* root = (JsonElement*)malloc(sizeof(JsonElement));
-
-  if (peek(parser) != '\0') {
-    root->value = parseJsonValue(parser);
-    root->next = NULL;
-  }
-
-  if (parser->had_error) {
-    fprintf(stderr, "Error parsing root element.\n");
-    free(root);
-    root = NULL;
-  }
-
-  return root;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///
-/// \returns true if parser had an error
-bool parseJsonDoc(JsonParser *parser, JsonDocument *doc)
-{
-  doc->root = parseJsonRoot(parser);
-  // Temp test value
-  // parser->had_error = false;
-  return parser->had_error;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///
-void clearParser(JsonParser* parser)
-{
-  parser->source = (String){ .str = NULL, .len = 0 };
-  parser->at = 0;
-  parser->had_error = false;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///
-void initParser(JsonParser* parser, String source)
-{
-  clearParser(parser);
-  parser->source = source;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///
-void freeParser(JsonParser* parser)
-{
-  String_free(&parser->source, NULL);
-  clearParser(parser);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///
-bool isDigit(char c)
-{
-  return c >= '0' && c <= '9';
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///
-bool isAlpha(char c)
-{
-  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///
-char advance(JsonParser* parser)
-{
-  if (DEBUG_) printf("Current char: parser[%ld] = %c\n", parser->at, parser->source.str[parser->at]);
-  if (peekNext(parser) != '\0') {
-    parser->at++;
-  }
-  if (DEBUG_) printf("After step: parser[%ld] = %c\n", parser->at, parser->source.str[parser->at]);
-  return parser->source.str[parser->at - 1];
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///
-char peekNext(JsonParser* parser)
-{
-  if (parser->at + 1 >= parser->source.len) {
-    return EOF;
-  }
-  return parser->source.str[parser->at + 1];
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///
-char peek(JsonParser* parser)
-{
-  return parser->source.str[parser->at];
-}
-
-////////////////////////////////////////////////////////////////////////////////
-///
-void consumeWhitespace(JsonParser* parser)
-{
-  for (;;) {
-    switch(peek(parser)) {
-      case ' ':
-      case '\t':
-      case '\n':
-      case '\r':
-        advance(parser);
-        break;
-      default:
-        return; 
+    if (isnan(number)) {
+        result.ok = false;
+        result.error = jp_makeError(jp, JSON_ERROR_UNEXPECTED_TOKEN, "Trying to parse NAN.");
     }
-  }
+
+    // advance by the number of characters strtod consumed.
+    if (result.ok == true) {
+        jp->at += (end - start);
+        result.value.type = JSON_NUMBER;
+        result.value.as.number = number;
+    }
+
+    return result;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+/// Similar to jp_parseJsonString, but intern the key in the string set
+StringView jp_parseJsonKey(JsonParser* jp)
+{
+  JsonValueResult result = { .ok = true };
+  StringView key = NULL_SV;
+  advance(jp); // advance is safe because we know we're at an opening quote
+  usize count = 0;
+  usize start = jp->at;
+  while (!isAtEnd(jp) && peek(jp) != '"') {
+    count++; // Count each non-quote character
+    advance(jp);
+  }
+  if (isAtEnd(jp)) {
+    result.ok = false;
+    result.error = jp_makeError(jp, JSON_ERROR_UNEXPECTED_END, "expected closing \"");
+  }
+
+  // Advance past the closing quote
+  advance(jp);
+  if (result.ok == true) {
+    StringView raw = (StringView){ .len = count, .str = &(jp->source.str[start]) };
+    key = StringSet_tryInsert(jp->intern, raw);
+  }
+  return key;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Parse a JsonNumber and leave jp->at pointing at the first character after the closing quote
+JsonValueResult jp_parseJsonString(JsonParser* jp)
+{
+    JsonValueResult result = { .ok = true };
+    // Advance past the starting quote
+    advance(jp); // advance is safe because we know we're at an opening quote
+    usize count = 0;
+    usize start = jp->at;
+    while (!isAtEnd(jp) && peek(jp) != '"') {
+        count++; // Count each non-quote character
+        advance(jp);
+        // Skip escape characters
+        // if (peek(jp) == '\\') {
+        //   advanceBy(jp, 2);
+        // }
+    }
+    if (isAtEnd(jp)) {
+        result.ok = false;
+        result.error = jp_makeError(jp, JSON_ERROR_UNEXPECTED_END, "expected closing \"");
+    }
+
+    // Advance past the closing quote
+    advance(jp);
+
+    if (result.ok == true) {
+        // Add an extra space for the null terminator
+        char* buf = allocator_alloc(jp->config->allocator, count + 1, 1);
+        memcpy(buf, &(jp->source.str[start]), count);
+        buf[count] = '\0';
+
+        result.value.type = JSON_STRING;
+        result.value.as.string = (StringView){ .len = count, .str = buf };
+    }
+
+    return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Parse a Json Boolean and leave jp->at pointing at the first character after the last letter
+/// Possibly not used due to bools being simple to parse directly in jp_parseJsonValue
+JsonValueResult jp_parseJsonBoolean(JsonParser* jp);
+
+////////////////////////////////////////////////////////////////////////////////
+JsonValueResult jp_parseJsonValue(JsonParser* jp)
+{
+    JsonValueResult result = { .ok = true };
+    consumeWhitespace(jp);
+    switch (peek(jp)) {
+        case '{': {
+                      result = jp_parseJsonObject(jp);
+                      break;
+                  }
+        case '[': {
+                      result = jp_parseJsonArray(jp);
+                      break;
+                  }
+        case '"': {
+                      result = jp_parseJsonString(jp);
+                      break;
+                  }
+        case 't': {
+                      if (jp->at + 4 <= jp->source.len &&
+                              strncmp(&(jp->source.str[jp->at]), "true", 4) == 0) {
+                          result.value.type = JSON_BOOL;
+                          result.value.as.boolean = true;
+                          advanceBy(jp, 4);
+                      } else {
+                          result.ok = false;
+                          result.error = jp_makeError(jp, JSON_ERROR_UNEXPECTED_TOKEN, "expected 'true'.");
+                      }
+                      break;
+                  }
+        case 'f': {
+                      if (jp->at + 5 <= jp->source.len &&
+                              strncmp(&(jp->source.str[jp->at]), "false", 5) == 0) {
+                          result.value.type = JSON_BOOL;
+                          result.value.as.boolean = false;
+                          advanceBy(jp, 5);
+                      } else {
+                          result.ok = false;
+                          result.error = jp_makeError(jp, JSON_ERROR_UNEXPECTED_TOKEN, "expected 'false'.");
+                      }
+                      break;
+                  }
+        case 'n': {
+                      if (jp->at + 4 <= jp->source.len &&
+                              strncmp(&(jp->source.str[jp->at]), "null", 4) == 0) {
+                          result.value.type = JSON_NULL;
+                          // NULL carries no actual value
+                          advanceBy(jp, 4);
+                      } else {
+                          result.ok = false;
+                          result.error = jp_makeError(jp, JSON_ERROR_UNEXPECTED_TOKEN, "expected 'null'.");
+                      }
+                      break;
+                  }
+        case '-':
+        case '0':
+        case '1':
+        case '2':
+        case '3':
+        case '4':
+        case '5':
+        case '6':
+        case '7':
+        case '8':
+        case '9': {
+                      result = jp_parseJsonNumber(jp);
+                      break;
+                  }
+        default: {
+                     result.ok = false;
+                     result.error = jp_makeError(jp, JSON_ERROR_UNEXPECTED_TOKEN, "unexpected symbol.");
+                     break;
+                 }
+    }
+
+    return result;
+
+}
+
+////////////////////////////////////////////////////////////////////////////////
+/// Make an error value
+JsonError
+jp_makeError(JsonParser *jp, JsonErrorCode code, const char *detail)
+{
+    return (JsonError){ code, jp->line, sv_create((char*)detail) };
+}
+
+////////////////////////////////////////////////////////////////////////////////
+JsonValueResult jp_parseFile(JsonParserConfig* jpc, StringView file)
+{
+    JsonParser jp = jp_parserInit(jpc, file);
+    JsonValueResult root = jp_parseJsonValue(&jp);
+    if (root.ok == false) {
+        // Handle error
+        fprintf(stderr, "ERROR at %ld %s: %s.\n", root.error.line, err_messages[root.error.code], root.error.message.str);
+    }
+    return root;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+[[maybe_unused]] void pretend_main(const char* file_name) {
+    profilerInit(&prof);
+    profilerBegin(&prof);
+    Allocator* arena = arena_list_allocator_create(MiB(10));
+    u8* buffer = malloc(KiB(10));
+    Allocator* buf   = fixed_buffer_allocator_create(buffer, KiB(10));
+    Allocator *gpa = gpa_allocator_create();
+    // Allocator* intern = arena_list_allocator_create(10 * 1024);
+
+    profileBlockBegin(read, "Read input", buf);
+    String file_contents = string_read_file(file_name, gpa);
+    profileBlockEnd(read);
+
+    JsonParserConfig jpc = jp_parserConfigInit(arena, buf, true);
+    profileBlockBegin(parse, "Parse file", buf);
+    [[maybe_unused]] JsonValueResult root = jp_parseFile(&jpc, sv_create(&file_contents));
+    if (root.ok == false) {
+        allocator_destroy(arena);
+        // allocator_destroy(intern);
+        string_free(&file_contents, gpa);
+    }
+    profileBlockEnd(parse);
+
+    JsonValue* pairs = jp_objectGet(&root.value, SV("pairs"));
+    usize elements = jp_arrayLength(pairs);
+    profileBandwidthBegin(Sum, "Sum", elements * sizeof(f64) * 4, buf);
+    printf("Summing %ld sets of pairs.\n", elements);
+
+    f64 sum = 0.;
+    f64 N   = 0.;
+    f64 run = 0.;
+    for (usize i = 0; i < elements; ++i) {
+        JsonValue* elem = jp_arrayAt(pairs, i);
+        f64 x0 = AS_NUMBER(objectGet(elem, "x0"));
+        f64 y0 = AS_NUMBER(objectGet(elem, "y0"));
+        f64 x1 = AS_NUMBER(objectGet(elem, "x1"));
+        f64 y1 = AS_NUMBER(objectGet(elem, "y1"));
+        run = referenceHaversine(x0, y0, x1, y1);
+        sum += run;
+        N++;
+    }
+
+    printf("Haversine distance = %g/%g = %g\n", sum, N, sum/N);
+    profileBlockEnd(Sum);
+
+    profileBlockBegin(dealloc, "Deallocation", buf);
+    allocator_destroy(arena);
+    allocator_destroy(buf);
+    free(buffer);
+    string_free(&file_contents, gpa);
+    allocator_destroy(gpa);
+    profileBlockEnd(dealloc);
+
+    profilerEndAndPrint(&prof);
+}
